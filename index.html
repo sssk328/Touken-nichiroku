@@ -923,40 +923,42 @@ async function loadData(){
   }
 }
 
-/* ---- 1対1 端末間引き継ぎ(書き出し/読み込み) ---- */
-/* LZW方式でJSONを圧縮してから引き継ぎコードにする。
-   スマートフォンのコピー機能には実質的な上限があり、刀剣男士を
-   多数登録すると旧方式（無圧縮base64）では数万文字になりコピーが
-   機能しなくなるため、圧縮してコードを大幅に短縮する。 */
+/* ---- 端末間引き継ぎ(ファイル方式) ---- */ 
+/* 書き出し：JSONファイルをダウンロード
+   読み込み：JSONファイルを選択して上書き
+   旧コード方式(LZ2:/無圧縮base64)も後方互換で読み込めるように残しています */
+
+function applyImportedData(obj){
+  const keepPin = DATA.pin;
+  const keepHandoverPin = DATA.handoverPin;
+  DATA = Object.assign(defaultData(),obj);
+  DATA.pin = keepPin;
+  DATA.handoverPin = keepHandoverPin;
+  fillDefaults();
+  saveData();
+}  
+
+/* ファイル名用の日時文字列　*/
+function transferFileName(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,"0");
+  return `honmaru-nikki-\( {d.getFullYear()} \){pad(d.getMonth()+1)}\( {pad(d.getDate())}- \){pad(d.getHours())}${pad(d.getMinutes())}.json`;
+}
+
+/* 書き出し用 Blob を作る */
+function createTransferBlob(){
+  const json = JSON.stringify(DATA);
+  return new Blob([json], {type: "application/json"});
+}
+
+/* 旧コード方式の読み込み用(後方互換) */
 const NIKKI_TRANSFER_PREFIX = "LZ2:";
 
-function lzwCompressToCodes(str){
-  const charToCode = new Map();
-  const alphabet = [];
-  for(let i=0;i<str.length;i++){
-    const ch = str[i];
-    if(!charToCode.has(ch)){
-      charToCode.set(ch, alphabet.length);
-      alphabet.push(ch);
-    }
-  }
-  const dict = new Map(charToCode);
-  let dictSize = alphabet.length;
-  let w = "";
-  const codes = [];
-  for(let i=0;i<str.length;i++){
-    const c = str[i];
-    const wc = w + c;
-    if(dict.has(wc)){
-      w = wc;
-    } else {
-      codes.push(dict.get(w));
-      dict.set(wc, dictSize++);
-      w = c;
-    }
-  }
-  if(w !== "") codes.push(dict.get(w));
-  return {alphabet, codes};
+function nikkiBase64ToBytes(b64){
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
 }
 function lzwDecompressFromCodes(alphabet, codes){
   const dict = alphabet.slice();
@@ -980,35 +982,6 @@ function lzwDecompressFromCodes(alphabet, codes){
   }
   return result;
 }
-// 文字列 -> バイト列（先頭5byte: [符号幅1byte][辞書文字列のUTF-8バイト長4byte]、以降 辞書文字列→各コード）
-function packLZWBytes(str){
-  const {alphabet, codes} = lzwCompressToCodes(str);
-  const alphabetBytes = new TextEncoder().encode(alphabet.join(""));
-  let maxCode = 0;
-  for(let i=0;i<codes.length;i++){ if(codes[i]>maxCode) maxCode = codes[i]; }
-  const codeWidth = maxCode <= 0xFFFF ? 2 : 3;
-  const headerLen = 5;
-  const buf = new Uint8Array(headerLen + alphabetBytes.length + codes.length*codeWidth);
-  buf[0] = codeWidth;
-  buf[1] = Math.floor(alphabetBytes.length / 16777216) & 0xFF;
-  buf[2] = (alphabetBytes.length >>> 16) & 0xFF;
-  buf[3] = (alphabetBytes.length >>> 8) & 0xFF;
-  buf[4] = alphabetBytes.length & 0xFF;
-  buf.set(alphabetBytes, headerLen);
-  let offset = headerLen + alphabetBytes.length;
-  for(let i=0;i<codes.length;i++){
-    const c = codes[i];
-    if(codeWidth===2){
-      buf[offset++] = (c >>> 8) & 0xFF;
-      buf[offset++] = c & 0xFF;
-    } else {
-      buf[offset++] = (c >>> 16) & 0xFF;
-      buf[offset++] = (c >>> 8) & 0xFF;
-      buf[offset++] = c & 0xFF;
-    }
-  }
-  return buf;
-}
 function unpackLZWBytes(buf){
   const codeWidth = buf[0];
   const alphabetByteLen = buf[1]*16777216 + (buf[2]<<16) + (buf[3]<<8) + buf[4];
@@ -1019,53 +992,21 @@ function unpackLZWBytes(buf){
   const codes = [];
   while(offset < buf.length){
     let c;
-    if(codeWidth===2){ c = (buf[offset]<<8) | buf[offset+1]; offset += 2; }
-    else { c = (buf[offset]<<16) | (buf[offset+1]<<8) | buf[offset+2]; offset += 3; }
+    if(codeWidth===2){ c (buf[offset]<<8) | buf[offset+1]; offset +=2; }
+    else { C = (buf[offset]<<16) | (buf[offset+1]<<8) | buf[offset+2]; offset += 3; }
     codes.push(c);
   }
-  return lzwDecompressFromCodes(alphabet, codes);
-}
-function nikkiBytesToBase64(bytes){
-  let binary = "";
-  const chunk = 0x8000;
-  for(let i=0;i<bytes.length;i+=chunk){
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
-  }
-  return btoa(binary);
-}
-function nikkiBase64ToBytes(b64){
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-function encodeTransferCode(){
-  const json = JSON.stringify(DATA);
-  // データ量が少ないと圧縮のオーバーヘッド（辞書分の情報量）が
-  // かえって無圧縮より長くなることがあるため、両方作って短い方を使う
-  const plain = btoa(unescape(encodeURIComponent(json)));
-  const packed = packLZWBytes(json);
-  const compressed = NIKKI_TRANSFER_PREFIX + nikkiBytesToBase64(packed);
-  return compressed.length < plain.length ? compressed : plain;
+  return lzwDecompressFromCodes(alphabet, Codes);
 }
 function decodeTransferCode(code){
   const trimmed = code.trim();
   if(trimmed.startsWith(NIKKI_TRANSFER_PREFIX)){
-    const bytes = nikkiBase64ToBytes(trimmed.slice(NIKKI_TRANSFER_PREFIX.length));
+    const bytes = nikkiBase64ToBytes(trimmed.Slice(NIKKI_TRANSFER_PREFIX.length));
     return JSON.parse(unpackLZWBytes(bytes));
   }
-  // 旧方式（無圧縮base64）で書き出されたコードとの後方互換
+  // 旧方式(無圧縮base64)
   const json = decodeURIComponent(escape(atob(trimmed)));
   return JSON.parse(json);
-}
-function applyImportedData(obj){
-  const keepPin = DATA.pin;
-  const keepHandoverPin = DATA.handoverPin;
-  DATA = Object.assign(defaultData(), obj);
-  DATA.pin = keepPin;
-  DATA.handoverPin = keepHandoverPin;
-  fillDefaults();
-  saveData();
 }
 
 let saveWarned=false;
@@ -2767,59 +2708,100 @@ function renderTransfer(main){
   main.innerHTML = `
     <div class="section-title">書き出す</div>
     <div class="card">
-      <button class="btn block" id="genCodeBtn">引き継ぎコードを作成</button>
-      <textarea class="transfer-textarea" id="exportArea" readonly style="margin-top:12px; display:none;"></textarea>
-      <div class="transfer-note" id="exportLenNote" style="display:none;"></div>
-      <div class="transfer-actions" id="exportActions" style="display:none;">
-        <button class="btn outline" id="copyCodeBtn">コピー</button>
-        <button class="btn outline" id="shareCodeBtn" style="display:none;">共有</button>
+      <button class="btn block" id="downloadBtn">引き継ぎファイルをダウンロード</button>
+      <div class="transfer-actions" id="exportActions" style="display:none; margin-top:12px;">
+        <button class="btn outline" id="shareFileBtn" style="display:none;">共有</button>
       </div>
-      <div class="transfer-note">生成したコードを、引き継ぎ先の端末の「読み込む」欄に貼り付けてください。コピーがうまく動作しない場合は「共有」からメモやメッセージアプリへ送るのもおすすめです。</div>
+      <div class="transfer-note" style="margin-top:12px;">
+        ダウンロードしたファイルを、引き継ぎ先の端末へ送信してください
+      </div>
     </div>
 
     <div class="section-title">読み込む</div>
     <div class="card">
-      <textarea class="transfer-textarea" id="importArea" placeholder="引き継ぎコードを貼り付け"></textarea>
-      <div class="transfer-actions">
-        <button class="btn gold block" id="importBtn">読み込む</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none;">
+      <button class="btn gold block" id="selectFileBtn">ファイルを選択して読み込む</button>
+      <div class="transfer-note" style="margin-top:12px;">
+        この端末のデータは上書きされます
       </div>
-      <div class="transfer-note">読み込むと、この端末のデータは上書きされます。</div>
+    </div>
+
+    <div class="section-title" style="margin-top:28px; opacity:0.7;">旧方式（コード）</div>
+    <div class="card" style="opacity:0.85;">
+      <textarea class="transfer-textarea" id="importArea" placeholder="貼り付け"></textarea>
+      <div class="transfer-actions" style="margin-top:10px;">
+        <button class="btn outline block" id="importCodeBtn">読み込む</button>
+      </div>
+      <div class="transfer-note">以前のバージョンで出力したコード用です</div>
     </div>
   `;
-  $("#genCodeBtn").addEventListener("click", ()=>{
-    const code = encodeTransferCode();
-    const area = $("#exportArea");
-    area.value = code;
-    area.style.display="block";
-    $("#exportActions").style.display="flex";
-    const lenNote = $("#exportLenNote");
-    lenNote.textContent = `コードの長さ：${code.length}文字`;
-    lenNote.style.display="block";
-    if(navigator.share){
-      $("#shareCodeBtn").style.display="inline-block";
+
+  // ===== 書き出し =====
+  let lastBlob = null;
+  let lastFileName = "";
+
+  $("#downloadBtn").addEventListener("click", ()=>{
+    lastBlob = createTransferBlob();
+    lastFileName = transferFileName();
+
+    const url = URL.createObjectURL(lastBlob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = lastFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=> URL.revokeObjectURL(url), 2000);
+    
+    // 共有ボタンを表示（対応端末のみ）
+    $("#exportActions").style.display = "flex";
+    if(navigator.canShare && navigator.canShare({files: [new File([lastBlob], lastFileName, {type:"application/json"})]})){
+      $("#shareFileBtn").style.display = "inline-block";
+    }else{
+      $("#shareFileBtn").style.display = "none";
     }
   });
-  $("#copyCodeBtn").addEventListener("click", async ()=>{
-    const area = $("#exportArea");
-    area.select();
+
+  $("#shareFileBtn").addEventListener("click", async ()=>{
+    if(!lastBlob) return;
     try{
-      await navigator.clipboard.writeText(area.value);
-      $("#copyCodeBtn").textContent = "コピーしました";
+      const file = new File([lastBlob], lastFileName, {type:"application/json"});
+      await navigator.share({
+        files: [file],
+        title: "本丸日録 引き継ぎデータ",
+        text: "本丸日録のバックアップファイルです"
+      });
     }catch(e){
-      document.execCommand("copy");
-      $("#copyCodeBtn").textContent = "コピーしました";
+      // キャンセル等は無視
     }
-    setTimeout(()=>{ $("#copyCodeBtn").textContent = "コピー"; }, 1800);
   });
-  $("#shareCodeBtn").addEventListener("click", async ()=>{
-    const code = $("#exportArea").value;
+
+  // ===== ファイル読み込み =====
+  $("#selectFileBtn").addEventListener("click", ()=>{
+    $("#importFile").click();
+  });
+
+  $("#importFile").addEventListener("change", async (e)=>{
+    const file = e.target.files && e.target.files[0];
+    if(!file) return;
     try{
-      await navigator.share({text: code});
-    }catch(e){
-      // ユーザーによるキャンセル等は無視
+      const text = await file.text();
+      const obj = JSON.parse(text);
+      if(!confirm("この端末のデータを上書きします。よろしいですか？")){
+        e.target.value = "";
+        return;
+      }
+      applyImportedData(obj);
+      navigate("basic");
+    }catch(err){
+      console.error(err);
+      alert("ファイルを読み取れませんでした。\n正しい引き継ぎファイルか確認してください。");
+      e.target.value = "";
     }
   });
-  $("#importBtn").addEventListener("click", ()=>{
+
+  // ===== 旧コード方式（後方互換） =====
+  $("#importCodeBtn").addEventListener("click", ()=>{
     const raw = $("#importArea").value.trim();
     if(!raw) return;
     let obj;
