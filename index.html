@@ -389,27 +389,18 @@ textarea{resize:vertical; min-height:70px;}
   border-radius:50%;
   position:relative;
 }
-.diary-stamp .seal svg{position:absolute; inset:0; width:100%; height:100%;}
 .diary-log{
-  margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);
-}
-.diary-log-title{
-  font-size:0.78rem; letter-spacing:0.08em; color:var(--kon);
-  font-weight:600; margin-bottom:6px;
+  margin-top:16px;
 }
 .diary-log .field-row{ font-size:0.85rem; }
 .log-diff{ font-size:0.78rem; font-weight:400; margin-left:4px; }
 .log-diff.plus{ color:var(--gold); }
 .log-diff.minus{ color:#b3352a; }
 .diary-log-divider{
-  display:flex; align-items:center; gap:8px;
   font-size:0.76rem; letter-spacing:0.08em; color:rgba(28,26,23,0.5);
   margin:14px 0 6px;
 }
-.diary-log-divider:first-of-type{ margin-top:0; }
-.diary-log-divider::before, .diary-log-divider::after{
-  content:""; flex:1; height:1px; background:var(--line);
-}
+.diary-log-divider:first-child{ margin-top:0; }
 
 .fab-add{
   display:block; width:100%; text-align:center; margin-top:6px;
@@ -2647,19 +2638,22 @@ function logRow(label, val, prevVal){
 function diaryLogHtml(d){
   const hasShizai = d.shizai && KURA_DEFS.shizai.some(k=>d.shizai[k]!==undefined);
   const hasDougu = d.dougu && (d.dougu["依頼札"]!==undefined || d.dougu["手伝い札"]!==undefined);
-  const hasAny = d.saniwaLv!==undefined || d.koban!==undefined || hasDougu || hasShizai || (d.toushiLog && d.toushiLog.length>0);
+  const hasShizaiDougu = d.koban!==undefined || hasDougu || hasShizai;
+  const hasAny = d.saniwaLv!==undefined || hasShizaiDougu || (d.toushiLog && d.toushiLog.length>0);
   if(!hasAny) return "";
 
   let shizaiDouguRows = "";
-  shizaiDouguRows += logRow("小判", d.koban, prevValueFor(d, x=>x.koban));
-  ["依頼札","手伝い札"].forEach(k=>{
-    const val = d.dougu ? d.dougu[k] : undefined;
-    shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.dougu ? x.dougu[k] : undefined));
-  });
-  KURA_DEFS.shizai.forEach(k=>{
-    const val = d.shizai ? d.shizai[k] : undefined;
-    shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.shizai ? x.shizai[k] : undefined));
-  });
+  if(hasShizaiDougu){
+    shizaiDouguRows += logRow("小判", d.koban, prevValueFor(d, x=>x.koban));
+    ["依頼札","手伝い札"].forEach(k=>{
+      const val = d.dougu ? d.dougu[k] : undefined;
+      shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.dougu ? x.dougu[k] : undefined));
+    });
+    KURA_DEFS.shizai.forEach(k=>{
+      const val = d.shizai ? d.shizai[k] : undefined;
+      shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.shizai ? x.shizai[k] : undefined));
+    });
+  }
 
   let saniwaToushiRows = "";
   saniwaToushiRows += logRow("審神者Lv", d.saniwaLv, prevValueFor(d, x=>x.saniwaLv));
@@ -2673,9 +2667,7 @@ function diaryLogHtml(d){
   }
 
   return `<div class="diary-log">
-          <div class="diary-log-title">記録ログ</div>
-          <div class="diary-log-divider">資材＆道具</div>
-          ${shizaiDouguRows}
+          ${hasShizaiDougu ? `<div class="diary-log-divider">資材＆道具</div>${shizaiDouguRows}` : ""}
           <div class="diary-log-divider">審神者＆男士Lv</div>
           ${saniwaToushiRows}
         </div>`;
