@@ -1068,21 +1068,22 @@ function applyImportedData(obj){
   saveData();
 }
 
-let saveTimer=null;
 let saveWarned=false;
+/* すべての保存操作は「保存」ボタン等、明示的なユーザー操作の直後に
+   一度だけ呼ばれる（入力の度に呼ばれる連打防止用ではない）ため、
+   遅延保存（デバウンス）にする意味がなく、むしろページが閉じられる/
+   バックグラウンドに回るタイミングと重なるとデータが失われるリスクが
+   あった。保存は必ず即時・同期的に行う。 */
 function saveData(){
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(()=>{
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
-    }catch(e){
-      console.error("save failed",e);
-      if(!saveWarned){
-        saveWarned = true;
-        alert("保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
-      }
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+  }catch(e){
+    console.error("save failed",e);
+    if(!saveWarned){
+      saveWarned = true;
+      alert("保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
     }
-  }, 200);
+  }
 }
 
 function maybeResetNikka(){
