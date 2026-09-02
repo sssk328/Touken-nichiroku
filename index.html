@@ -390,6 +390,26 @@ textarea{resize:vertical; min-height:70px;}
   position:relative;
 }
 .diary-stamp .seal svg{position:absolute; inset:0; width:100%; height:100%;}
+.diary-log{
+  margin-top:16px; padding-top:14px; border-top:1px dashed var(--line);
+}
+.diary-log-title{
+  font-size:0.78rem; letter-spacing:0.08em; color:var(--kon);
+  font-weight:600; margin-bottom:6px;
+}
+.diary-log .field-row{ font-size:0.85rem; }
+.log-diff{ font-size:0.78rem; font-weight:400; margin-left:4px; }
+.log-diff.plus{ color:var(--gold); }
+.log-diff.minus{ color:#b3352a; }
+.diary-log-divider{
+  display:flex; align-items:center; gap:8px;
+  font-size:0.76rem; letter-spacing:0.08em; color:rgba(28,26,23,0.5);
+  margin:14px 0 6px;
+}
+.diary-log-divider:first-of-type{ margin-top:0; }
+.diary-log-divider::before, .diary-log-divider::after{
+  content:""; flex:1; height:1px; background:var(--line);
+}
 
 .fab-add{
   display:block; width:100%; text-align:center; margin-top:6px;
@@ -2560,7 +2580,7 @@ function applyDiaryReflect(main, prefix, entry){
 }
 
 /* ④刀剣男士名・Lv・累積経験値：名前が完全一致する場合のみ、確認ボタンで即時反映 */
-function attachToushiConfirm(main, prefix){
+function attachToushiConfirm(main, prefix, logArray){
   const btn = $("#"+prefix+"_toushiConfirmBtn", main);
   if(!btn) return;
   btn.addEventListener("click", ()=>{
@@ -2576,8 +2596,89 @@ function attachToushiConfirm(main, prefix){
     if(expInp.value!==""){ target.exp = Number(expInp.value)||0; updated = true; }
     if(!updated){ alert("Lvまたは累積経験値を入力してください"); return; }
     saveData();
+    if(logArray){
+      const existing = logArray.find(x=>x.name===target.name);
+      if(existing){ existing.lv = target.lv; existing.exp = target.exp; }
+      else{ logArray.push({name: target.name, lv: target.lv, exp: target.exp}); }
+    }
+    nameInp.value = "";
+    lvInp.value = "";
+    expInp.value = "";
     alert(name+"の情報を更新しました");
   });
+}
+
+/* ある日誌エントリより前（過去）の記録から、条件を満たす直近のエントリを探す */
+function findPrevDiaryEntry(currentId, predicate){
+  const sorted = [...DATA.diary].sort((a,b)=>
+    (b.dateSort||"").localeCompare(a.dateSort||"") || (b.id||"").localeCompare(a.id||"")
+  );
+  const idx = sorted.findIndex(x=>x.id===currentId);
+  if(idx===-1) return null;
+  for(let i=idx+1;i<sorted.length;i++){
+    if(predicate(sorted[i])) return sorted[i];
+  }
+  return null;
+}
+
+/* 数値の増減を "(+12)" のような形式で返す。比較対象が無ければ空文字 */
+function diffText(newVal, oldVal){
+  if(oldVal===undefined || oldVal===null || newVal===undefined || newVal===null) return "";
+  const diff = newVal - oldVal;
+  if(diff===0) return `<span class="log-diff">(±0)</span>`;
+  const cls = diff>0 ? "plus" : "minus";
+  const sign = diff>0 ? "+" : "";
+  return `<span class="log-diff ${cls}">(${sign}${formatNum(diff)})</span>`;
+}
+
+/* d に対して、getterで取り出す値がある直近過去のエントリから同じ値を取得 */
+function prevValueFor(d, getter){
+  const prev = findPrevDiaryEntry(d.id, x=>getter(x)!==undefined);
+  return prev ? getter(prev) : undefined;
+}
+
+/* ラベル：値(前回比) の1行を生成。値が無ければ空欄のまま行だけ出す */
+function logRow(label, val, prevVal){
+  const valText = val!==undefined ? `${formatNum(val)} ${diffText(val, prevVal)}` : "";
+  return `<div class="field-row"><span class="field-label">${esc(label)}</span><span class="field-val">${valText}</span></div>`;
+}
+
+/* 日誌本文の下に表示する「記録ログ」欄（資材＆道具／審神者＆男士Lvの2区分） */
+function diaryLogHtml(d){
+  const hasShizai = d.shizai && KURA_DEFS.shizai.some(k=>d.shizai[k]!==undefined);
+  const hasDougu = d.dougu && (d.dougu["依頼札"]!==undefined || d.dougu["手伝い札"]!==undefined);
+  const hasAny = d.saniwaLv!==undefined || d.koban!==undefined || hasDougu || hasShizai || (d.toushiLog && d.toushiLog.length>0);
+  if(!hasAny) return "";
+
+  let shizaiDouguRows = "";
+  shizaiDouguRows += logRow("小判", d.koban, prevValueFor(d, x=>x.koban));
+  ["依頼札","手伝い札"].forEach(k=>{
+    const val = d.dougu ? d.dougu[k] : undefined;
+    shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.dougu ? x.dougu[k] : undefined));
+  });
+  KURA_DEFS.shizai.forEach(k=>{
+    const val = d.shizai ? d.shizai[k] : undefined;
+    shizaiDouguRows += logRow(k, val, prevValueFor(d, x=> x.shizai ? x.shizai[k] : undefined));
+  });
+
+  let saniwaToushiRows = "";
+  saniwaToushiRows += logRow("審神者Lv", d.saniwaLv, prevValueFor(d, x=>x.saniwaLv));
+  if(d.toushiLog && d.toushiLog.length){
+    d.toushiLog.forEach(t=>{
+      const prev = findPrevDiaryEntry(d.id, x=>x.toushiLog && x.toushiLog.some(y=>y.name===t.name));
+      const prevRec = prev ? prev.toushiLog.find(y=>y.name===t.name) : null;
+      const valText = `Lv${formatNum(t.lv)} ${diffText(t.lv, prevRec?prevRec.lv:undefined)}／累積経験値${formatNum(t.exp)} ${diffText(t.exp, prevRec?prevRec.exp:undefined)}`;
+      saniwaToushiRows += `<div class="field-row"><span class="field-label">${esc(t.name)}</span><span class="field-val">${valText}</span></div>`;
+    });
+  }
+
+  return `<div class="diary-log">
+          <div class="diary-log-title">記録ログ</div>
+          <div class="diary-log-divider">資材＆道具</div>
+          ${shizaiDouguRows}
+          <div class="diary-log-divider">審神者＆男士Lv</div>
+          ${saniwaToushiRows}
+        </div>`;
 }
 
 function renderDiaryNew(main){
@@ -2596,7 +2697,8 @@ function renderDiaryNew(main){
     </div>
   `;
   $("#backBtn").addEventListener("click", ()=>{ navigate("diary"); });
-  attachToushiConfirm(main, "n");
+  const nToushiLog = [];
+    attachToushiConfirm(main, "n", nToushiLog);
   $("#saveDiaryBtn").addEventListener("click", async ()=>{
     const title = $("#n_title").value.trim();
     const body = $("#n_body").value.trim();
@@ -2612,6 +2714,7 @@ function renderDiaryNew(main){
     };
     applyDiaryReflect(main, "n", entry);
     DATA.diary.push(entry);
+    if(nToushiLog.length){ entry.toushiLog = nToushiLog; }
     saveData();
     navigate("diary");
   });
@@ -2632,6 +2735,7 @@ function renderDiaryView(main, id){
         <div style="font-size:1.05rem; font-weight:600;">${d.title ? esc(d.title) : `<span style="color:rgba(28,26,23,0.4); font-weight:400;">（見出しなし）</span>`}</div>
         <div style="white-space:pre-wrap; line-height:1.7;">${esc(d.body)}</div>
         ${d.image ? `<img src="${d.image}" style="width:100%; border-radius:10px;">` : ""}
+        ${diaryLogHtml(d)}
       </div>
     </div>
   `;
@@ -2661,7 +2765,8 @@ function renderDiaryEdit(main, id){
     </div>
   `;
   $("#backBtn").addEventListener("click", ()=>{ navigate("diary"); });
-  attachToushiConfirm(main, "e");
+  d.toushiLog = d.toushiLog || [];
+    attachToushiConfirm(main, "e", d.toushiLog);
   $("#saveEditBtn").addEventListener("click", async ()=>{
     d.title = $("#e_title").value.trim();
     d.body = $("#e_body").value.trim();
