@@ -1841,7 +1841,7 @@ function fitValueFont(el, wrap, baseFontRem){
 
 function inlineEditNumber(container, label, obj, key, size){
   const wrap = document.createElement("div");
-  wrap.style.cssText = "text-align:center;";
+  wrap.style.cssText = "text-align:center; min-width:0;";
   const valFont = size==="big" ? "2.1rem" : (size==="compact" ? "1.05rem" : "1.2rem");
   const labelFont = size==="compact" ? "0.62rem" : "0.72rem";
   const valSpan = document.createElement("div");
