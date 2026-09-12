@@ -403,6 +403,11 @@ textarea{resize:vertical; min-height:70px;}
 .log-diff{ font-size:0.78rem; font-weight:400; margin-left:4px; }
 .log-diff.plus{ color:var(--gold); }
 .log-diff.minus{ color:#b3352a; }
+
+.log-toushi-val{ display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.log-toushi-main{ font-weight:600; }
+.log-toushi-expdiff{ font-size:0.78rem; }
+
 .diary-log-divider{
   display:flex; align-items:center; gap:8px;
   font-size:0.76rem; letter-spacing:0.08em; color:rgba(28,26,23,0.5);
@@ -1805,6 +1810,35 @@ function renderToushiEdit(main, id){
 }
 
 /* ============ 3. 蔵 ============ */
+
+/* 表示幅に収まるまでフォントサイズを縮める（元のサイズの45%、最低11pxまで） */
+function fitValueFont(el, wrap, baseFontRem){
+  el.style.fontSize = baseFontRem;
+  const baseSize = parseFloat(getComputedStyle(el).fontSize);
+  const minSize = Math.max(baseSize*0.45, 11);
+  let size = baseSize;
+  let guard = 0;
+  while(el.scrollWidth > wrap.clientWidth && size > minSize && guard < 40){
+    size -= 1;
+    el.style.fontSize = size + "px";
+    guard++;
+  }
+}
+
+/* 表示幅に収まるまでフォントサイズを縮める（元のサイズの45%、最低11pxまで） */
+function fitValueFont(el, wrap, baseFontRem){
+  el.style.fontSize = baseFontRem;
+  const baseSize = parseFloat(getComputedStyle(el).fontSize);
+  const minSize = Math.max(baseSize*0.45, 11);
+  let size = baseSize;
+  let guard = 0;
+  while(el.scrollWidth > wrap.clientWidth && size > minSize && guard < 40){
+    size -= 1;
+    el.style.fontSize = size + "px";
+    guard++;
+  }
+}
+
 function inlineEditNumber(container, label, obj, key, size){
   const wrap = document.createElement("div");
   wrap.style.cssText = "text-align:center;";
@@ -1812,7 +1846,7 @@ function inlineEditNumber(container, label, obj, key, size){
   const labelFont = size==="compact" ? "0.62rem" : "0.72rem";
   const valSpan = document.createElement("div");
   valSpan.textContent = formatNum(obj[key]);
-  valSpan.style.cssText = "font-weight:700; color:var(--kon); font-size:"+valFont+";";
+  valSpan.style.cssText = "font-weight:700; color:var(--kon); font-size:"+valFont+"; white-space:nowrap;";
   valSpan.style.cursor="pointer";
   const labelSpan = document.createElement("div");
   labelSpan.textContent = label;
@@ -1829,11 +1863,13 @@ function inlineEditNumber(container, label, obj, key, size){
       saveData();
       valSpan.textContent = formatNum(obj[key]);
       if(wrap.contains(inp)) wrap.replaceChild(valSpan, inp);
+      fitValueFont(valSpan, wrap, valFont);
     };
     inp.addEventListener("blur", commit);
     inp.addEventListener("keydown", e=>{ if(e.key==="Enter") inp.blur(); });
   });
   container.appendChild(wrap);
+  fitValueFont(valSpan, wrap, valFont);
   return wrap;
 }
 
@@ -2181,7 +2217,7 @@ function renderEventNew(main){
       <div class="form-grid">
         <div><label>名称</label><input type="text" id="e_name"></div>
         <div><label>開催期間</label><input type="text" id="e_period" placeholder="例: 2026/09/01〜2026/09/15"></div>
-        <div><label>終了日</label><input type="date" id="e_endDate"></div>
+        <div><label>終了日(残り日数の計算に使用)</label><input type="date" id="e_endDate"></div>
         <div>
           <label>モード</label>
           <div class="event-mode-select">
@@ -2548,7 +2584,7 @@ function diaryReflectFieldsHtml(prefix, entry){
         <div class="reflect-panel">
           <div class="reflect-mini">
             <label>審神者Lv</label>
-            <input type="number" class="reflect-input" id="${prefix}_saniwaLv" value="${entry.saniwaLv!==undefined?entry.saniwaLv:""}" placeholder="未変更">
+            <input type="number" class="reflect-input" id="${prefix}_saniwaLv" value="${entry.saniwaLv!==undefined?entry.saniwaLv:""}" placeholder="─">
           </div>
           <div class="reflect-mini">
             <label>催物pt</label>
@@ -2565,22 +2601,22 @@ function diaryReflectFieldsHtml(prefix, entry){
             ${KURA_DEFS.shizai.map(k=>`
               <div class="reflect-mini">
                 <label>${esc(k)}</label>
-                <input type="number" class="reflect-input reflect-shizai" data-key="${escAttr(k)}" value="${shizaiVals[k]!==undefined?shizaiVals[k]:""}" placeholder="未変更">
+                <input type="number" class="reflect-input reflect-shizai" data-key="${escAttr(k)}" value="${shizaiVals[k]!==undefined?shizaiVals[k]:""}" placeholder="─">
               </div>`).join("")}
           </div>
-          <div class="reflect-sublabel">札・小判</div>
+       <div class="reflect-sublabel">札・小判</div>
           <div class="reflect-grid3">
             <div class="reflect-mini">
               <label>依頼札</label>
-              <input type="number" class="reflect-input reflect-fuda" data-key="依頼札" value="${douguVals["依頼札"]!==undefined?douguVals["依頼札"]:""}" placeholder="未変更">
+              <input type="number" class="reflect-input reflect-fuda" data-key="依頼札" value="${douguVals["依頼札"]!==undefined?douguVals["依頼札"]:""}" placeholder="─">
             </div>
             <div class="reflect-mini">
               <label>手伝い札</label>
-              <input type="number" class="reflect-input reflect-fuda" data-key="手伝い札" value="${douguVals["手伝い札"]!==undefined?douguVals["手伝い札"]:""}" placeholder="未変更">
+              <input type="number" class="reflect-input reflect-fuda" data-key="手伝い札" value="${douguVals["手伝い札"]!==undefined?douguVals["手伝い札"]:""}" placeholder="─">
             </div>
             <div class="reflect-mini">
               <label>小判</label>
-              <input type="number" class="reflect-input" id="${prefix}_koban" value="${entry.koban!==undefined?entry.koban:""}" placeholder="未変更">
+              <input type="number" class="reflect-input" id="${prefix}_koban" value="${entry.koban!==undefined?entry.koban:""}" placeholder="─">
             </div>
           </div>
         </div>
@@ -2589,16 +2625,16 @@ function diaryReflectFieldsHtml(prefix, entry){
         <div class="reflect-panel">
           <div class="reflect-mini">
             <label>刀剣男士名（完全一致で反映）</label>
-            <input type="text" class="reflect-input" id="${prefix}_toushiName" placeholder="名前を入力">
+            <input type="text" class="reflect-input" id="${prefix}_toushiName" placeholder="─">
           </div>
           <div class="reflect-row-flex">
             <div class="reflect-mini" style="flex:1;">
               <label>Lv</label>
-              <input type="number" class="reflect-input" id="${prefix}_toushiLv" placeholder="Lv">
+              <input type="number" class="reflect-input" id="${prefix}_toushiLv" placeholder="─">
             </div>
             <div class="reflect-mini" style="flex:1;">
               <label>累積経験値</label>
-              <input type="number" class="reflect-input" id="${prefix}_toushiExp" placeholder="経験値">
+              <input type="number" class="reflect-input" id="${prefix}_toushiExp" placeholder="─">
             </div>
           </div>
           <button type="button" class="btn small" id="${prefix}_toushiConfirmBtn">確認</button>
@@ -2745,8 +2781,11 @@ function diaryLogHtml(d){
     d.toushiLog.forEach(t=>{
       const prev = findPrevDiaryEntry(d.id, x=>x.toushiLog && x.toushiLog.some(y=>y.name===t.name));
       const prevRec = prev ? prev.toushiLog.find(y=>y.name===t.name) : null;
-      const valText = `Lv${formatNum(t.lv)} ${diffText(t.lv, prevRec?prevRec.lv:undefined)}／累積経験値${formatNum(t.exp)} ${diffText(t.exp, prevRec?prevRec.exp:undefined)}`;
-      saniwaToushiRows += `<div class="field-row"><span class="field-label">${esc(t.name)}</span><span class="field-val">${valText}</span></div>`;
+      const lvDiff = diffText(t.lv, prevRec?prevRec.lv:undefined);
+      const expDiff = diffText(t.exp, prevRec?prevRec.exp:undefined);
+      const mainLine = `Lv${formatNum(t.lv)} ${lvDiff}／累積${formatNum(t.exp)}`;
+      const valHtml = `<div class="log-toushi-val"><div class="log-toushi-main">${mainLine}</div>${expDiff ? `<div class="log-toushi-expdiff">${expDiff}</div>` : ""}</div>`;
+      saniwaToushiRows += `<div class="field-row"><span class="field-label">${esc(t.name)}</span>${valHtml}</div>`;
     });
   }
 
