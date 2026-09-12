@@ -353,6 +353,13 @@ textarea{resize:vertical; min-height:70px;}
   flex:1; background:var(--white); border-radius:12px; box-shadow:var(--shadow);
   padding:8px 4px; text-align:center; min-width:0;
 }
+.event-mode-select{ display:flex; gap:8px; margin-top:4px; }
+.event-mode-btn{
+  flex:1; padding:7px 4px; border-radius:16px;
+  border:1px solid var(--gold); background:var(--white); color:var(--kon);
+  font-size:0.76rem; letter-spacing:0.03em; text-align:center;
+}
+.event-mode-btn.on{ background:var(--ai); color:var(--white); border-color:var(--ai); }
 
 .dhead{
   display:flex; justify-content:space-between; align-items:baseline; gap:8px;
@@ -2099,6 +2106,11 @@ function daysLeftLabel(dateStr){
   if(d<=0) return "終了";
   return String(d);
 }
+function eventMiniLabels(mode){
+  if(mode==="tokumei") return {cur:"現在周回数", target:"目標周回数"};
+  if(mode==="kp") return {cur:"顕現pt", target:"確保数"};
+  return {cur:"現在pt", target:"目標pt"};
+}
 
 /* 終了日13:00を過ぎた開催中の催物を自動で戦績（アーカイブ）へ移動する。
    現在pt/目標pt/残り日数のミニカードは開催中一覧にのみ表示される仕様のため、
@@ -2154,8 +2166,9 @@ function renderEventList(main){
     if(!row) return;
     const curCell = $('.event-mini-card[data-mini="cur"]', row);
     const targetCell = $('.event-mini-card[data-mini="target"]', row);
-    inlineEditNumber(curCell, "現在pt", e, "lastPt", "normal");
-    inlineEditNumber(targetCell, "目標pt", e, "targetPt", "normal");
+    const labels = eventMiniLabels(e.mode);
+    inlineEditNumber(curCell, labels.cur, e, "lastPt", "normal");
+    inlineEditNumber(targetCell, labels.target, e, "targetPt", "normal");
   });
   $$(".event-card").forEach(c=> c.addEventListener("click", ()=>{ navigate("event/detail/"+c.dataset.id); }));
   $("#addEventBtn").addEventListener("click", ()=>{ navigate("event/new"); });
@@ -2169,17 +2182,35 @@ function renderEventNew(main){
         <div><label>名称</label><input type="text" id="e_name"></div>
         <div><label>開催期間</label><input type="text" id="e_period" placeholder="例: 2026/09/01〜2026/09/15"></div>
         <div><label>終了日(残り日数の計算に使用)</label><input type="date" id="e_endDate"></div>
+        <div>
+          <label>モード</label>
+          <div class="event-mode-select">
+            <button type="button" class="event-mode-btn on" data-mode="normal">通常</button>
+            <button type="button" class="event-mode-btn" data-mode="kp">鍛刀CP</button>
+            <button type="button" class="event-mode-btn" data-mode="tokumei">特命調査</button>
+          </div>
+        </div>
       </div>
       <button class="btn block" id="createEventBtn">追加する</button>
     </div>
   `;
+  let selectedMode = "normal";
+  $$(".event-mode-btn", main).forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      selectedMode = btn.dataset.mode;
+      $$(".event-mode-btn", main).forEach(b=> b.classList.toggle("on", b===btn));
+    });
+  });
   $("#backBtn").addEventListener("click", ()=>{ navigate("event"); });
   $("#createEventBtn").addEventListener("click", ()=>{
     const name = $("#e_name").value.trim();
     if(!name) return;
     const e = {
       id: uid(), name, period: $("#e_period").value, endDate: $("#e_endDate").value,
-      lastPt:0, targetPt:0, goldUsed:0, rewards:"", drops:"", archived:false, archivedAt:0
+      mode: selectedMode,
+      lastPt:0, targetPt:0, goldUsed:0, rewards:"", drops:"",
+      kpShizai:0, kpIraifuda:0, kpTetsudaifuda:0,
+      archived:false, archivedAt:0
     };
     DATA.events.push(e);
     saveData();
@@ -2190,19 +2221,42 @@ function renderEventNew(main){
 function renderEventView(main, id){
   const e = DATA.events.find(x=>x.id===id);
   if(!e){ main.innerHTML=`<div class="empty-hint">見つかりません</div>`; return; }
+  const mode = e.mode || "normal";
+  const labels = eventMiniLabels(mode);
+  
+  let fieldsHtml = "";
+  if(mode==="kp"){
+    fieldsHtml += `<div class="field-row"><span class="field-label">合計顕現pt</span><span class="field-val">${formatNum(e.lastPt||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">確保数</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">資材</span><span class="field-val">${formatNum(e.kpShizai||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">依頼札</span><span class="field-val">${formatNum(e.kpIraifuda||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">手伝い札</span><span class="field-val">${formatNum(e.kpTetsudaifuda||0)}</span></div>`;
+    if(e.kpFuji!==undefined) fieldsHtml += `<div class="field-row"><span class="field-label">富士</span><span class="field-val">${formatNum(e.kpFuji)}</span></div>`;
+    if(e.kpMatsu!==undefined) fieldsHtml += `<div class="field-row"><span class="field-label">松</span><span class="field-val">${formatNum(e.kpMatsu)}</span></div>`;
+    if(e.kpTake!==undefined) fieldsHtml += `<div class="field-row"><span class="field-label">竹</span><span class="field-val">${formatNum(e.kpTake)}</span></div>`;
+    if(e.kpUme!==undefined) fieldsHtml += `<div class="field-row"><span class="field-label">梅</span><span class="field-val">${formatNum(e.kpUme)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>`;
+  }else{
+    fieldsHtml += `<div class="field-row"><span class="field-label">${labels.cur}</span><span class="field-val">${formatNum(e.lastPt||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">${labels.target}</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>`;
+    fieldsHtml += `<div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>`;
+    if(mode!=="tokumei"){
+      fieldsHtml += `<div class="field-row"><span class="field-label">消費小判数</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>`;
+    }
+    fieldsHtml += `<div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>`;
+  }
   main.innerHTML = `
     <button class="back-btn" id="backBtn">← 一覧へ</button>
     <div class="card">
       <h3 style="margin:0 0 4px 0; font-size:1.1rem;">${esc(e.name)}</h3>
       <div class="period" style="margin-bottom:12px;">${esc(e.period)}</div>
-      <div class="field-row"><span class="field-label">現在pt</span><span class="field-val">${formatNum(e.lastPt||0)}</span></div>
-      <div class="field-row"><span class="field-label">目標pt</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>
-      <div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>
-      <div class="field-row"><span class="field-label">消費小判数</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>
-      <div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>
+      ${fieldsHtml}
     </div>
-    ${e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(報酬)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : ""}
-    ${e.drops ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(ドロップ)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.drops)}</div></div>` : ""}
+    ${mode==="kp"
+      ? (e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : "")
+      : `${e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(報酬)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : ""}
+         ${e.drops ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(ドロップ)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.drops)}</div></div>` : ""}`}
     <button class="fab-edit" id="editEventBtn" aria-label="編集">✎</button>
   `;
   $("#backBtn").addEventListener("click", ()=>{ navigate("event"); });
@@ -2212,18 +2266,40 @@ function renderEventView(main, id){
 function renderEventEdit(main, id){
   const e = DATA.events.find(x=>x.id===id);
   if(!e){ main.innerHTML=`<div class="empty-hint">見つかりません</div>`; return; }
+  const mode = e.mode || "normal";
+  const labels = eventMiniLabels(mode);
+
+  let fieldsHtml = `
+        <div><label>名称</label><input type="text" id="ed_name" value="${escAttr(e.name)}"></div>
+        <div><label>開催期間</label><input type="text" id="ed_period" value="${escAttr(e.period)}"></div>
+        <div><label>終了日(残り日数の計算に使用)</label><input type="date" id="ed_endDate" value="${escAttr(e.endDate||"")}"></div>
+        <div><label>${labels.cur}</label><input type="number" id="ed_lastPt" value="${escAttr(e.lastPt)}"></div>
+        <div><label>${labels.target}</label><input type="number" id="ed_targetPt" value="${escAttr(e.targetPt)}"></div>`;
+        
+  if(mode==="kp"){
+    fieldsHtml += `
+        <div><label>資材</label><input type="number" id="ed_kpShizai" value="${escAttr(e.kpShizai)}"></div>
+        <div><label>依頼札</label><input type="number" id="ed_kpIraifuda" value="${escAttr(e.kpIraifuda)}"></div>
+        <div><label>手伝い札</label><input type="number" id="ed_kpTetsudaifuda" value="${escAttr(e.kpTetsudaifuda)}"></div>
+        <div><label>富士</label><input type="number" id="ed_kpFuji" value="${escAttr(e.kpFuji)}" placeholder="未入力"></div>
+        <div><label>松</label><input type="number" id="ed_kpMatsu" value="${escAttr(e.kpMatsu)}" placeholder="未入力"></div>
+        <div><label>竹</label><input type="number" id="ed_kpTake" value="${escAttr(e.kpTake)}" placeholder="未入力"></div>
+        <div><label>梅</label><input type="number" id="ed_kpUme" value="${escAttr(e.kpUme)}" placeholder="未入力"></div>
+        <div><label>獲得刀剣男士</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>`;
+  }else{
+    if(mode!=="tokumei"){
+      fieldsHtml += `<div><label>消費小判数</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>`;
+    }
+    fieldsHtml += `
+        <div><label>獲得刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>獲得刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+  }
+
   main.innerHTML = `
     <button class="back-btn" id="backBtn">← 閲覧へ</button>
     <div class="card">
       <div class="form-grid">
-        <div><label>名称</label><input type="text" id="ed_name" value="${escAttr(e.name)}"></div>
-        <div><label>開催期間</label><input type="text" id="ed_period" value="${escAttr(e.period)}"></div>
-        <div><label>終了日(残り日数の計算に使用)</label><input type="date" id="ed_endDate" value="${escAttr(e.endDate||"")}"></div>
-        <div><label>現在pt</label><input type="number" id="ed_lastPt" value="${escAttr(e.lastPt)}"></div>
-        <div><label>目標pt</label><input type="number" id="ed_targetPt" value="${escAttr(e.targetPt)}"></div>
-        <div><label>消費小判数</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>
-        <div><label>獲得刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
-        <div><label>獲得刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>
+        ${fieldsHtml}
       </div>
       <button class="btn block" id="saveEventBtn" style="margin-top:14px;">保存</button>
       ${e.archived
@@ -2237,8 +2313,20 @@ function renderEventEdit(main, id){
     e.name=$("#ed_name").value; e.period=$("#ed_period").value;
     e.endDate=$("#ed_endDate").value;
     e.lastPt=Number($("#ed_lastPt").value)||0; e.targetPt=Number($("#ed_targetPt").value)||0;
-    e.goldUsed=Number($("#ed_goldUsed").value)||0;
-    e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+    if(mode==="kp"){
+      e.kpShizai=Number($("#ed_kpShizai").value)||0;
+      e.kpIraifuda=Number($("#ed_kpIraifuda").value)||0;
+      e.kpTetsudaifuda=Number($("#ed_kpTetsudaifuda").value)||0;
+      const fujiInp=$("#ed_kpFuji"), matsuInp=$("#ed_kpMatsu"), takeInp=$("#ed_kpTake"), umeInp=$("#ed_kpUme");
+      if(fujiInp.value!=="") e.kpFuji=Number(fujiInp.value)||0; else delete e.kpFuji;
+      if(matsuInp.value!=="") e.kpMatsu=Number(matsuInp.value)||0; else delete e.kpMatsu;
+      if(takeInp.value!=="") e.kpTake=Number(takeInp.value)||0; else delete e.kpTake;
+      if(umeInp.value!=="") e.kpUme=Number(umeInp.value)||0; else delete e.kpUme;
+      e.rewards=$("#ed_rewards").value;
+    }else{
+      if(mode!=="tokumei"){ e.goldUsed=Number($("#ed_goldUsed").value)||0; }
+      e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+    }
     saveData();
     navigate("event/detail/"+id);
   });
