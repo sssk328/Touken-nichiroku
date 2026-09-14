@@ -422,6 +422,21 @@ textarea{resize:vertical; min-height:70px;}
   display:block; width:100%; text-align:center; margin-top:6px;
 }
 
+/* 日誌：年・月プルダウン */
+.diary-filter-row{
+  display:flex; gap:10px; margin:12px 0 18px;
+}
+.diary-filter-item{
+  position:relative; flex:1; min-width:0;
+}
+.diary-filter-select{
+  -webkit-appearance:none; appearance:none;
+  width:100%; box-sizing:border-box; border:none; background:#4d7fa6; color:var(--white);
+  border-radius:24px; padding:11px 16px; font-size:0.85rem; letter-spacing:0.05em;
+  text-align:center; text-align-last:center; cursor:pointer;
+}
+.diary-filter-select:focus{outline:none;}
+
 .nikka-wrap{position:relative; padding-bottom:150px;}
 .hanko-overlay{
   position:absolute; inset:-6px; z-index:5; border-radius:16px;
@@ -1128,7 +1143,9 @@ const ROUTE_TITLES = {
 };
 
 let currentPath = "home";
+const scrollPositions = {}; // パスごとのスクロール位置を記憶し、戻った際に復元する
 function navigate(path){
+  scrollPositions[currentPath] = window.scrollY;
   currentPath = path;
   route();
 }
@@ -1171,7 +1188,12 @@ function route(){
     case "transfer": renderTransfer(main); break;
     default: renderHome(main);
   }
-  window.scrollTo(0,0);
+  const savedY = scrollPositions[currentPath];
+  if(savedY !== undefined){
+    requestAnimationFrame(()=>{ window.scrollTo(0, savedY); });
+  }else{
+    window.scrollTo(0,0);
+  }
 }
 
 /* ============ Home ============ */
@@ -2461,12 +2483,59 @@ function renderNikka(main){
 }
 
 /* ============ 6. 日誌 ============ */
+/* 日誌データに登場する年＋現在の年を候補として返す（新しい順） */
+function diaryYearOptions(){
+  const years = new Set();
+  DATA.diary.forEach(d=>{
+    const m = /^(\d{4})-/.exec(d.dateSort||"");
+    if(m) years.add(Number(m[1]));
+  });
+  years.add(gameDateNow().getFullYear());
+  if(diaryFilterYear!==null) years.add(diaryFilterYear);
+  return [...years].sort((a,b)=> b-a);
+}
+
+let diaryFilterYear = null;   // 選択中の年（数値）
+let diaryFilterMonth = null;  // 選択中の月（0=睦月 ... 11=師走）
+
+/* 年・月の絞り込みが未設定なら、直近の記録（無ければ現在の日付）を初期値にする */
+function ensureDiaryFilterDefaults(){
+  if(diaryFilterYear!==null && diaryFilterMonth!==null) return;
+  const sorted = [...DATA.diary].sort((a,b)=> (b.dateSort||"").localeCompare(a.dateSort||""));
+  let base = gameDateNow();
+  if(sorted.length && sorted[0].dateSort){
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(sorted[0].dateSort);
+    if(m) base = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  }
+  diaryFilterYear = base.getFullYear();
+  diaryFilterMonth = base.getMonth();
+}
+
 function renderDiaryList(main){
-  const list = [...DATA.diary].sort((a,b)=> (b.dateSort||"").localeCompare(a.dateSort||""));
+  ensureDiaryFilterDefaults();
+  const years = diaryYearOptions();
+
+  const filtered = DATA.diary.filter(d=>{
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d.dateSort||"");
+    if(!m) return false;
+    return Number(m[1])===diaryFilterYear && (Number(m[2])-1)===diaryFilterMonth;
+  }).sort((a,b)=> (a.dateSort||"").localeCompare(b.dateSort||"") || (a.id||"").localeCompare(b.id||""));
+
+  const yearOptionsHtml = years.map(y=>
+    `<option value="${y}" ${y===diaryFilterYear?"selected":""}>${esc(kanjiDigitsStr(y))}年</option>`
+  ).join("");
+  const monthOptionsHtml = WAREKI_MONTHS.map((m,i)=>
+    `<option value="${i}" ${i===diaryFilterMonth?"selected":""}>${esc(m)}</option>`
+  ).join("");
+
   let html = `<div class="section-title">日誌</div>`;
-  html += `<button class="btn block fab-add" id="newDiaryBtn" style="margin-bottom:14px;">＋ 新規作成</button>`;
-  if(list.length===0){ html += `<div class="empty-hint">まだ記録がありません</div>`; }
-  list.forEach(d=>{
+  html += `<button class="btn block fab-add" id="newDiaryBtn" style="margin-bottom:10px;">＋ 新規作成</button>`;
+  html += `<div class="diary-filter-row">
+      <div class="diary-filter-item"><select id="diaryYearSelect" class="diary-filter-select">${yearOptionsHtml}</select></div>
+      <div class="diary-filter-item"><select id="diaryMonthSelect" class="diary-filter-select">${monthOptionsHtml}</select></div>
+    </div>`;
+  if(filtered.length===0){ html += `<div class="empty-hint">この月の記録はありません</div>`; }
+  filtered.forEach(d=>{
     const titleHtml = d.title
       ? esc(d.title)
       : `<span style="color:rgba(28,26,23,0.4);">（見出しなし）</span>`;
@@ -2487,6 +2556,14 @@ function renderDiaryList(main){
     });
   });
   $("#newDiaryBtn").addEventListener("click", ()=>{ navigate("diary/new"); });
+  $("#diaryYearSelect").addEventListener("change", (e)=>{
+    diaryFilterYear = Number(e.target.value);
+    renderDiaryList(main);
+  });
+  $("#diaryMonthSelect").addEventListener("change", (e)=>{
+    diaryFilterMonth = Number(e.target.value);
+    renderDiaryList(main);
+  });
 }
 
 /* タップ＝閲覧へ、左スライド＝編集へ、を1つの要素に割り当てる */
