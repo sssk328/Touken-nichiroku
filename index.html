@@ -1051,21 +1051,21 @@ function decodeTransferCode(code){
   return JSON.parse(json);
 }
 
-let saveWarned=false;
 /* すべての保存操作は「保存」ボタン等、明示的なユーザー操作の直後に
    一度だけ呼ばれる（入力の度に呼ばれる連打防止用ではない）ため、
    遅延保存（デバウンス）にする意味がなく、むしろページが閉じられる/
    バックグラウンドに回るタイミングと重なるとデータが失われるリスクが
-   あった。保存は必ず即時・同期的に行う。 */
+   あった。保存は必ず即時・同期的に行う。
+   戻り値: 保存に成功したら true、失敗したら false。
+   呼び出し側は戻り値を見て、失敗時は画面遷移などを行わないこと。 */
 function saveData(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+    return true;
   }catch(e){
     console.error("save failed",e);
-    if(!saveWarned){
-      saveWarned = true;
-      alert("保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
-    }
+    alert("保存に失敗しました。保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
+    return false;
   }
 }
 
@@ -1503,16 +1503,18 @@ function renderBasicEdit(main){
     b.name=$("#f_name").value; b.saniwaName=$("#f_saniwaName").value; b.server=$("#f_server").value; b.joinDate=$("#f_joinDate").value;
     b.uid=$("#f_uid").value; b.lv=$("#f_lv").value; b.firstSword=$("#f_firstSword").value;
     b.handoverCode=$("#f_handoverCode").value;
-    saveData();
-    navigate("basic");
+    const ok = saveData();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const check = raw ? JSON.parse(raw).basic.name : "(データなし)";
+    alert("① 入力欄から読み取った名前: " + b.name + "\n② 保存処理の結果: " + ok + "\n③ 保存直後にlocalStorageから読み直した名前: " + check);
+    if(ok) navigate("basic");
   });
   $("#saveFirstToushiBtn").addEventListener("click", ()=>{
     if(!b.firstToushi) b.firstToushi = {};
     $$(".f_first_input", main).forEach(el=>{
       b.firstToushi[el.dataset.type] = el.value;
     });
-    saveData();
-    navigate("basic");
+    if(saveData()) navigate("basic");
   });
 }
 
