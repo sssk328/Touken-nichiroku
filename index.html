@@ -589,9 +589,6 @@ textarea{resize:vertical; min-height:70px;}
 </head>
 <body>
 <div id="app">
-  <div style="position:fixed; top:0; left:0; right:0; z-index:99999; background:#e0273b; color:#fff; text-align:center; font-size:13px; padding:6px 4px; font-family:sans-serif;">
-    調査用テスト版 v3（この赤い帯が見えていれば最新ファイルが読み込まれています）
-  </div>
 
   <!-- ENTRANCE -->
   <div id="entrance">
@@ -1054,21 +1051,21 @@ function decodeTransferCode(code){
   return JSON.parse(json);
 }
 
+let saveWarned=false;
 /* すべての保存操作は「保存」ボタン等、明示的なユーザー操作の直後に
    一度だけ呼ばれる（入力の度に呼ばれる連打防止用ではない）ため、
    遅延保存（デバウンス）にする意味がなく、むしろページが閉じられる/
    バックグラウンドに回るタイミングと重なるとデータが失われるリスクが
-   あった。保存は必ず即時・同期的に行う。
-   戻り値: 保存に成功したら true、失敗したら false。
-   呼び出し側は戻り値を見て、失敗時は画面遷移などを行わないこと。 */
+   あった。保存は必ず即時・同期的に行う。 */
 function saveData(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
-    return true;
   }catch(e){
     console.error("save failed",e);
-    alert("保存に失敗しました。保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
-    return false;
+    if(!saveWarned){
+      saveWarned = true;
+      alert("保存容量の上限に達した可能性があります。日誌の画像を減らすなどしてお試しください。");
+    }
   }
 }
 
@@ -1492,7 +1489,6 @@ function renderBasicEdit(main){
         <div><label>引き継ぎコード／パスワード</label><input type="text" id="f_handoverCode" value="${escAttr(b.handoverCode)}"></div>
       </div>
       <button class="btn block" id="saveBasicBtn">保存</button>
-      <div id="saveDebugBox" style="margin-top:10px; padding:10px; background:#fff3cd; border:1px solid #d4a017; border-radius:6px; font-size:0.8rem; white-space:pre-wrap; display:none;"></div>
     </div>
     <div class="section-title">軌跡</div>
     <div class="card">
@@ -1507,26 +1503,16 @@ function renderBasicEdit(main){
     b.name=$("#f_name").value; b.saniwaName=$("#f_saniwaName").value; b.server=$("#f_server").value; b.joinDate=$("#f_joinDate").value;
     b.uid=$("#f_uid").value; b.lv=$("#f_lv").value; b.firstSword=$("#f_firstSword").value;
     b.handoverCode=$("#f_handoverCode").value;
-    let ok, check;
-    try{
-      ok = saveData();
-      const raw = localStorage.getItem(STORAGE_KEY);
-      check = raw ? JSON.parse(raw).basic.name : "(データなし)";
-    }catch(err){
-      ok = "エラー発生: " + err.message;
-      check = "(取得不可)";
-    }
-    const box = $("#saveDebugBox");
-    box.style.display = "block";
-    box.textContent = "① 入力欄から読み取った名前: " + b.name + "\n② 保存処理の結果: " + ok + "\n③ 保存直後にlocalStorageから読み直した名前: " + check;
-    box.scrollIntoView({behavior:"smooth", block:"center"});
+    saveData();
+    navigate("basic");
   });
   $("#saveFirstToushiBtn").addEventListener("click", ()=>{
     if(!b.firstToushi) b.firstToushi = {};
     $$(".f_first_input", main).forEach(el=>{
       b.firstToushi[el.dataset.type] = el.value;
     });
-    if(saveData()) navigate("basic");
+    saveData();
+    navigate("basic");
   });
 }
 
