@@ -882,7 +882,7 @@ function defaultData(){
   return {
     pin: null,
     handoverPin: null,
-    basic: {name:"", saniwaName:"", server:"", uid:"", joinDate:"", lv:"", handoverCode:"", firstSword:"", firstToushi:{}},
+    basic: {name:"", emakiName:"", saniwaName:"", server:"", uid:"", joinDate:"", emakiJoinDate:"", lv:"", handoverCode:"", firstSword:"", firstForge:"", firstToushi:{}},
     toushi: [],
     kura: {
       shizai:{}, dougu:{}, toso:{}, gakki:{}, danpen:{}, houmotsu:{}, koban:0
@@ -1406,16 +1406,18 @@ function renderBasic(main){
   main.innerHTML = `
     <div class="card">
       <div class="field-row"><span class="field-label">本丸名</span><span class="field-val">${esc(b.name)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">絵巻船名</span><span class="field-val">${esc(b.emakiName)||"—"}</span></div>
       <div class="field-row"><span class="field-label">審神者名</span><span class="field-val">${esc(b.saniwaName)||"—"}</span></div>
-      <div class="field-row"><span class="field-label">本拠地(サーバー)</span><span class="field-val">${esc(b.server)||"—"}</span></div>
-      <div class="field-row"><span class="field-label">就任日</span><span class="field-val">${esc(b.joinDate)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">本拠地(所属国)</span><span class="field-val">${esc(b.server)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">初期刀<br>初鍛刀</span><span class="field-val">${esc(b.firstSword)||"—"}<br>${esc(b.firstForge)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">審神者就任日</span><span class="field-val">${esc(b.joinDate)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">絵巻守就任日</span><span class="field-val">${esc(b.emakiJoinDate)||"—"}</span></div>
+      <div class="field-row"><span class="field-label">審神者Lv</span><span class="field-val">${b.lv ? formatNum(b.lv) : "—"}</span></div>
       <div class="field-row">
         <span class="field-label">UID</span>
         <button class="btn small outline" id="showUid">表示</button>
       </div>
       <div class="field-row hidden" id="uidRow"><span class="field-label"></span><span class="field-val" id="uidVal"></span></div>
-      <div class="field-row"><span class="field-label">審神者Lv</span><span class="field-val">${b.lv ? formatNum(b.lv) : "—"}</span></div>
-      <div class="field-row"><span class="field-label">始まりの一振り<br>初鍛刀</span><span class="field-val">${esc(b.firstSword)||"—"}</span></div>
       <div class="field-row">
         <span class="field-label">引き継ぎコード／パスワード</span>
         <button class="btn small outline" id="showHandover">表示</button>
@@ -1480,12 +1482,15 @@ function renderBasicEdit(main){
     <div class="card">
       <div class="form-grid">
         <div><label>本丸名</label><input type="text" id="f_name" value="${escAttr(b.name)}"></div>
+        <div><label>絵巻船名</label><input type="text" id="f_emakiName" value="${escAttr(b.emakiName)}"></div>
         <div><label>審神者名</label><input type="text" id="f_saniwaName" value="${escAttr(b.saniwaName)}"></div>
-        <div><label>本拠地(サーバー)</label><input type="text" id="f_server" value="${escAttr(b.server)}"></div>
-        <div><label>就任日</label><input type="date" id="f_joinDate" value="${escAttr(b.joinDate)}"></div>
-        <div><label>UID</label><input type="text" id="f_uid" value="${escAttr(b.uid)}"></div>
+        <div><label>本拠地(所属国)</label><input type="text" id="f_server" value="${escAttr(b.server)}"></div>
+        <div><label>初期刀</label><input type="text" id="f_firstSword" value="${escAttr(b.firstSword)}"></div>
+        <div><label>初鍛刀</label><input type="text" id="f_firstForge" value="${escAttr(b.firstForge)}"></div>
+        <div><label>審神者就任日</label><input type="date" id="f_joinDate" value="${escAttr(b.joinDate)}"></div>
+        <div><label>絵巻守就任日</label><input type="date" id="f_emakiJoinDate" value="${escAttr(b.emakiJoinDate)}"></div>
         <div><label>審神者Lv</label><input type="number" id="f_lv" value="${escAttr(b.lv)}"></div>
-        <div><label>始まりの一振り<br>初鍛刀</label><input type="text" id="f_firstSword" value="${escAttr(b.firstSword)}"></div>
+        <div><label>UID</label><input type="text" id="f_uid" value="${escAttr(b.uid)}"></div>
         <div><label>引き継ぎコード／パスワード</label><input type="text" id="f_handoverCode" value="${escAttr(b.handoverCode)}"></div>
       </div>
       <button class="btn block" id="saveBasicBtn">保存</button>
@@ -1500,8 +1505,9 @@ function renderBasicEdit(main){
     </div>
   `;
   $("#saveBasicBtn").addEventListener("click", ()=>{
-    b.name=$("#f_name").value; b.saniwaName=$("#f_saniwaName").value; b.server=$("#f_server").value; b.joinDate=$("#f_joinDate").value;
-    b.uid=$("#f_uid").value; b.lv=$("#f_lv").value; b.firstSword=$("#f_firstSword").value;
+    b.name=$("#f_name").value; b.emakiName=$("#f_emakiName").value; b.saniwaName=$("#f_saniwaName").value; b.server=$("#f_server").value;
+    b.joinDate=$("#f_joinDate").value; b.emakiJoinDate=$("#f_emakiJoinDate").value;
+    b.uid=$("#f_uid").value; b.lv=$("#f_lv").value; b.firstSword=$("#f_firstSword").value; b.firstForge=$("#f_firstForge").value;
     b.handoverCode=$("#f_handoverCode").value;
     saveData();
     navigate("basic");
