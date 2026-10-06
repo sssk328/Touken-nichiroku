@@ -2182,6 +2182,7 @@ function daysLeftLabel(dateStr){
 function eventMiniLabels(mode){
   if(mode==="tokumei") return {cur:"現在周回数", target:"目標周回数"};
   if(mode==="kp") return {cur:"顕現pt", target:"確保数"};
+  if(mode==="osaka") return {cur:"獲得小判数", target:"目標小判数"};
   return {cur:"現在pt", target:"目標pt"};
 }
 
@@ -2261,6 +2262,7 @@ function renderEventNew(main){
             <button type="button" class="event-mode-btn on" data-mode="normal">通常</button>
             <button type="button" class="event-mode-btn" data-mode="kp">鍛刀CP</button>
             <button type="button" class="event-mode-btn" data-mode="tokumei">特命調査</button>
+            <button type="button" class="event-mode-btn" data-mode="osaka">大阪城</button>
           </div>
         </div>
       </div>
@@ -2283,6 +2285,7 @@ function renderEventNew(main){
       mode: selectedMode,
       lastPt:0, targetPt:0, goldUsed:0, rewards:"", drops:"",
       kpShizai:0, kpIraifuda:0, kpTetsudaifuda:0,
+      osakaShirayama:0, osakaOnimaru:0,
       archived:false, archivedAt:0
     };
     DATA.events.push(e);
@@ -2314,7 +2317,7 @@ function renderEventView(main, id){
     fieldsHtml += `<div class="field-row"><span class="field-label">${labels.cur}</span><span class="field-val">${formatNum(e.lastPt||0)}</span></div>`;
     fieldsHtml += `<div class="field-row"><span class="field-label">${labels.target}</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>`;
     fieldsHtml += `<div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>`;
-    if(mode!=="tokumei"){
+    if(mode!=="tokumei" && mode!=="osaka"){
       fieldsHtml += `<div class="field-row"><span class="field-label">消費小判数</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>`;
     }
     fieldsHtml += `<div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>`;
@@ -2326,7 +2329,10 @@ function renderEventView(main, id){
       <div class="period" style="margin-bottom:12px;">${esc(e.period)}</div>
       ${fieldsHtml}
     </div>
-    ${mode==="kp"
+    ${mode==="osaka"
+      ? `${e.osakaShirayama ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">白山吉光</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${formatNum(e.osakaShirayama)}</div></div>` : ""}
+         ${e.osakaOnimaru ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">鬼丸国綱</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${formatNum(e.osakaOnimaru)}</div></div>` : ""}`
+      : mode==="kp"
       ? (e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : "")
       : `${e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(報酬)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : ""}
          ${e.drops ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(ドロップ)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.drops)}</div></div>` : ""}`}
@@ -2359,6 +2365,10 @@ function renderEventEdit(main, id){
         <div><label>竹</label><input type="number" id="ed_kpTake" value="${escAttr(e.kpTake)}" placeholder="未入力"></div>
         <div><label>梅</label><input type="number" id="ed_kpUme" value="${escAttr(e.kpUme)}" placeholder="未入力"></div>
         <div><label>獲得刀剣男士</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>`;
+  }else if(mode==="osaka"){
+    fieldsHtml += `
+        <div><label>白山吉光</label><input type="number" id="ed_osakaShirayama" value="${escAttr(e.osakaShirayama)}"></div>
+        <div><label>鬼丸国綱</label><input type="number" id="ed_osakaOnimaru" value="${escAttr(e.osakaOnimaru)}"></div>`;
   }else{
     if(mode!=="tokumei"){
       fieldsHtml += `<div><label>消費小判数</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>`;
@@ -2396,6 +2406,9 @@ function renderEventEdit(main, id){
       if(takeInp.value!=="") e.kpTake=Number(takeInp.value)||0; else delete e.kpTake;
       if(umeInp.value!=="") e.kpUme=Number(umeInp.value)||0; else delete e.kpUme;
       e.rewards=$("#ed_rewards").value;
+    }else if(mode==="osaka"){
+      e.osakaShirayama=Number($("#ed_osakaShirayama").value)||0;
+      e.osakaOnimaru=Number($("#ed_osakaOnimaru").value)||0;
     }else{
       if(mode!=="tokumei"){ e.goldUsed=Number($("#ed_goldUsed").value)||0; }
       e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
