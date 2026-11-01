@@ -420,6 +420,22 @@ textarea{resize:vertical; min-height:70px;}
   display:block; width:100%; text-align:center; margin-top:6px;
 }
 
+/* 日誌フォーム：記録済み男士の一覧（確認ボタンの下） */
+.tlog-list{ display:flex; flex-direction:column; }
+.tlog-list:empty{ display:none; }
+.tlog-row{
+  display:grid; grid-template-columns:5.2em 3.4em 1fr 2em; align-items:center; gap:6px;
+  padding:8px 2px; border-bottom:1px solid var(--line); font-size:0.85rem;
+}
+.tlog-row:last-child{ border-bottom:none; }
+.tlog-name{ font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:clip; }
+.tlog-lv{ white-space:nowrap; }
+.tlog-exp{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.tlog-del{
+  background:none; border:none; padding:4px 0; font-size:0.95rem; line-height:1;
+  color:rgba(28,26,23,0.5); text-align:center; cursor:pointer;
+}
+
 /* 指南書：注意書き・乱舞Lv必要数の表 */
 .shinansho-note{
   font-size:0.72rem; color:rgba(28,26,23,0.55); letter-spacing:0.04em;
@@ -2978,6 +2994,7 @@ function diaryReflectFieldsHtml(prefix, entry){
             </div>
           </div>
           <button type="button" class="btn small" id="${prefix}_toushiConfirmBtn">確認</button>
+          <div class="tlog-list" id="${prefix}_toushiLogList"></div>
         </div>`;
 }
 
@@ -3039,9 +3056,58 @@ function applyDiaryReflect(main, prefix, entry){
 }
 
 /* ④刀剣男士名・Lv・累積経験値：名前が完全一致する場合のみ、確認ボタンで即時反映 */
+/* 一覧表示用の省略名（6文字以上の男士のみ。未登録の名前はそのまま表示） */
+const TOUSHI_SHORT_NAMES = {
+  "童子切安綱剥落":"剥落",
+  "ソハヤノツルキ":"ソハヤ",
+  "にっかり青江":"にっかり",
+  "へし切長谷部":"長谷部",
+  "南海太郎朝尊":"朝尊",
+  "古今伝授の太刀":"古今",
+  "大千鳥十文字槍":"大千鳥"
+};
+function toushiShortName(name){
+  return TOUSHI_SHORT_NAMES[name] || name;
+}
+
 function attachToushiConfirm(main, prefix, logArray){
   const btn = $("#"+prefix+"_toushiConfirmBtn", main);
   if(!btn) return;
+
+  /* 記録済みの男士を「確認」ボタンの下に縦並びで表示。✕で記録から削除できる */
+  const listEl = $("#"+prefix+"_toushiLogList", main);
+  const renderLogList = ()=>{
+    if(!listEl || !logArray) return;
+    listEl.innerHTML = logArray.map((r,i)=>`
+      <div class="tlog-row">
+        <span class="tlog-name">${esc(toushiShortName(r.name))}</span>
+        <span class="tlog-lv">Lv${formatNum(r.lv)}</span>
+        <span class="tlog-exp">${formatNum(r.exp)}</span>
+        <button type="button" class="tlog-del" data-i="${i}" aria-label="削除">✕</button>
+      </div>`).join("");
+    $$(".tlog-del", listEl).forEach(b=>{
+      b.addEventListener("click", ()=>{
+        const idx = Number(b.dataset.i);
+        const rec = logArray[idx];
+        if(!rec) return;
+        // 刀剣男士ページの値が、この記録の値のまま変わっていない項目だけ、更新前の値に戻す
+        const target = DATA.toushi.find(t=>t.name===rec.name);
+        const revertLv = !!target && rec.baseLv!==undefined && target.lv===rec.lv;
+        const revertExp = !!target && rec.baseExp!==undefined && target.exp===rec.exp;
+        const msg = (revertLv||revertExp)
+          ? `${rec.name}の記録を削除しますか？\n刀剣男士ページの数値も更新前に戻ります。`
+          : `${rec.name}の記録を削除しますか？`;
+        if(!confirm(msg)) return;
+        if(revertLv) target.lv = rec.baseLv;
+        if(revertExp) target.exp = rec.baseExp;
+        logArray.splice(idx,1);
+        saveData();
+        renderLogList();
+      });
+    });
+  };
+  renderLogList();
+
   btn.addEventListener("click", ()=>{
     const nameInp = $("#"+prefix+"_toushiName", main);
     const lvInp = $("#"+prefix+"_toushiLv", main);
@@ -3051,18 +3117,31 @@ function attachToushiConfirm(main, prefix, logArray){
     const target = DATA.toushi.find(t=>t.name===name);
     if(!target){ alert("名前が完全に一致する刀剣男士が見つかりません"); return; }
     let updated = false;
-    if(lvInp.value!==""){ target.lv = Number(lvInp.value)||0; updated = true; }
-    if(expInp.value!==""){ target.exp = Number(expInp.value)||0; updated = true; }
+    // 更新前の値（刀剣男士ページに記録されていた値）。日誌に前回の記録が無い男士の増加量を出す基準になる
+    const oldLv = target.lv, oldExp = target.exp;
+    const lvUpdated = lvInp.value!=="", expUpdated = expInp.value!=="";
+    if(lvUpdated){ target.lv = Number(lvInp.value)||0; updated = true; }
+    if(expUpdated){ target.exp = Number(expInp.value)||0; updated = true; }
     if(!updated){ alert("Lvまたは累積経験値を入力してください"); return; }
     saveData();
     if(logArray){
       const existing = logArray.find(x=>x.name===target.name);
-      if(existing){ existing.lv = target.lv; existing.exp = target.exp; }
-      else{ logArray.push({name: target.name, lv: target.lv, exp: target.exp}); }
+      if(existing){
+        existing.lv = target.lv; existing.exp = target.exp;
+        // 同じ日誌内で初めて更新する項目だけ基準値を保存（2回目以降の上書きでは基準を変えない）
+        if(lvUpdated && existing.baseLv===undefined) existing.baseLv = Number(oldLv)||0;
+        if(expUpdated && existing.baseExp===undefined) existing.baseExp = Number(oldExp)||0;
+      }else{
+        const rec = {name: target.name, lv: target.lv, exp: target.exp};
+        if(lvUpdated) rec.baseLv = Number(oldLv)||0;
+        if(expUpdated) rec.baseExp = Number(oldExp)||0;
+        logArray.push(rec);
+      }
     }
     nameInp.value = "";
     lvInp.value = "";
     expInp.value = "";
+    renderLogList();
     alert(name+"の情報を更新しました");
   });
 }
@@ -3121,8 +3200,9 @@ function diaryLogHtml(d){
     d.toushiLog.forEach(t=>{
       const prev = findPrevDiaryEntry(d.id, x=>x.toushiLog && x.toushiLog.some(y=>y.name===t.name));
       const prevRec = prev ? prev.toushiLog.find(y=>y.name===t.name) : null;
-      const lvDiff = diffText(t.lv, prevRec?prevRec.lv:undefined);
-      const expDiff = diffText(t.exp, prevRec?prevRec.exp:undefined);
+      // 日誌に前回の記録があればそれと比較。無ければ記録時に保存した「更新前の値」(刀剣男士ページの値)と比較
+      const lvDiff = diffText(t.lv, prevRec ? prevRec.lv : t.baseLv);
+      const expDiff = diffText(t.exp, prevRec ? prevRec.exp : t.baseExp);
       const mainLine = `Lv${formatNum(t.lv)} ${lvDiff}／累積${formatNum(t.exp)}`;
       const valHtml = `<div class="log-toushi-val"><div class="log-toushi-main">${mainLine}</div>${expDiff ? `<div class="log-toushi-expdiff">${expDiff}</div>` : ""}</div>`;
       saniwaToushiRows += `<div class="field-row"><span class="field-label">${esc(t.name)}</span>${valHtml}</div>`;
