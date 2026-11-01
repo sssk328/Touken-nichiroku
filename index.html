@@ -420,6 +420,30 @@ textarea{resize:vertical; min-height:70px;}
   display:block; width:100%; text-align:center; margin-top:6px;
 }
 
+/* 確認ダイアログ（標準confirmの代わり） */
+.ui-confirm-overlay{
+  position:fixed; inset:0; z-index:9999; background:rgba(23,28,46,0.45);
+  display:flex; align-items:center; justify-content:center; padding:24px;
+}
+.ui-confirm{
+  width:100%; max-width:320px; background:var(--kinari); color:var(--black);
+  border-radius:var(--radius); box-shadow:var(--shadow); padding:20px 22px 12px;
+}
+.ui-confirm-title{
+  font-size:1rem; font-weight:700; letter-spacing:0.12em; color:var(--black);
+}
+.ui-confirm-mark{ color:var(--ai); }
+.ui-confirm-msg{
+  margin:20px 0 22px; text-align:center; font-size:0.92rem; line-height:1.7;
+  white-space:pre-line; color:var(--black); word-break:break-all;
+}
+.ui-confirm-actions{ display:flex; justify-content:flex-end; gap:6px; }
+.ui-confirm-btn{
+  background:none; border:none; color:var(--ai); font-size:0.95rem; letter-spacing:0.1em;
+  padding:10px 14px; border-radius:10px; cursor:pointer;
+}
+.ui-confirm-btn.ok{ font-weight:700; }
+
 /* 日誌フォーム：記録済み男士の一覧（確認ボタンの下） */
 .tlog-list{ display:flex; flex-direction:column; }
 .tlog-list:empty{ display:none; }
@@ -2026,8 +2050,8 @@ function renderToushiEdit(main, id){
     saveData();
     navigate("toushi/detail/"+id);
   });
-  $("#deleteToushiBtn").addEventListener("click", ()=>{
-    if(confirm(t.name+"を削除しますか？")){
+  $("#deleteToushiBtn").addEventListener("click", async ()=>{
+    if(await uiConfirm(t.name+"を削除しますか？")){
       DATA.toushi = DATA.toushi.filter(x=>x.id!==id);
       saveData();
       navigate("toushi");
@@ -2683,8 +2707,8 @@ function renderEventEdit(main, id){
       navigate("event");
     });
   }
-  $("#deleteEventBtn").addEventListener("click", ()=>{
-    if(confirm("削除しますか？")){
+  $("#deleteEventBtn").addEventListener("click", async ()=>{
+    if(await uiConfirm("削除しますか？")){
       DATA.events = DATA.events.filter(x=>x.id!==id);
       saveData();
       navigate("event");
@@ -3086,7 +3110,7 @@ function attachToushiConfirm(main, prefix, logArray){
         <button type="button" class="tlog-del" data-i="${i}" aria-label="削除">✕</button>
       </div>`).join("");
     $$(".tlog-del", listEl).forEach(b=>{
-      b.addEventListener("click", ()=>{
+      b.addEventListener("click", async ()=>{
         const idx = Number(b.dataset.i);
         const rec = logArray[idx];
         if(!rec) return;
@@ -3097,7 +3121,7 @@ function attachToushiConfirm(main, prefix, logArray){
         const msg = (revertLv||revertExp)
           ? `${rec.name}の記録を削除しますか？\n刀剣男士ページの数値も更新前に戻ります。`
           : `${rec.name}の記録を削除しますか？`;
-        if(!confirm(msg)) return;
+        if(!(await uiConfirm(msg))) return;
         if(revertLv) target.lv = rec.baseLv;
         if(revertExp) target.exp = rec.baseExp;
         logArray.splice(idx,1);
@@ -3324,8 +3348,8 @@ function renderDiaryEdit(main, id){
     saveData();
     navigate("diary");
   });
-  $("#deleteDiaryBtn").addEventListener("click", ()=>{
-    if(confirm("この日誌を削除しますか？")){
+  $("#deleteDiaryBtn").addEventListener("click", async ()=>{
+    if(await uiConfirm("この日誌を削除しますか？")){
       DATA.diary = DATA.diary.filter(x=>x.id!==id);
       saveData();
       navigate("diary");
@@ -3474,7 +3498,7 @@ function renderTransfer(main){
     try{
       const text = await file.text();
       const obj = JSON.parse(text);
-      if(!confirm("この端末のデータを上書きします。よろしいですか？")){
+      if(!(await uiConfirm("この端末のデータを上書きします。よろしいですか？"))){
         e.target.value = "";
         return;
       }
@@ -3488,7 +3512,7 @@ function renderTransfer(main){
   });
 
   // ===== 旧コード方式（後方互換） =====
-  $("#importCodeBtn").addEventListener("click", ()=>{
+  $("#importCodeBtn").addEventListener("click", async ()=>{
     const raw = $("#importArea").value.trim();
     if(!raw) return;
     let obj;
@@ -3498,13 +3522,44 @@ function renderTransfer(main){
       alert("コードを読み取れませんでした");
       return;
     }
-    if(!confirm("この端末のデータを上書きします。よろしいですか？")) return;
+    if(!(await uiConfirm("この端末のデータを上書きします。よろしいですか？"))) return;
     applyImportedData(obj);
     navigate("basic");
   });
 }
 
 /* ============ esc helpers ============ */
+/* サイト用の確認ダイアログ（標準のconfirmの代わり）。許可→true／戻る・枠外タップ→false を返す */
+function uiConfirm(message){
+  return new Promise(resolve=>{
+    const overlay = document.createElement("div");
+    overlay.className = "ui-confirm-overlay";
+    overlay.innerHTML = `
+      <div class="ui-confirm" role="dialog" aria-modal="true">
+        <div class="ui-confirm-title"><span class="ui-confirm-mark">\u26A0\uFE0E</span> 確認 <span class="ui-confirm-mark">\u26A0\uFE0E</span></div>
+        <div class="ui-confirm-msg"></div>
+        <div class="ui-confirm-actions">
+          <button type="button" class="ui-confirm-btn" data-r="0">戻る</button>
+          <button type="button" class="ui-confirm-btn ok" data-r="1">許可</button>
+        </div>
+      </div>`;
+    overlay.querySelector(".ui-confirm-msg").textContent = message; // textContentで安全に表示（改行はCSSで反映）
+    const finish = (result)=>{
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      resolve(result);
+    };
+    const onKey = (e)=>{ if(e.key==="Escape") finish(false); };
+    document.addEventListener("keydown", onKey);
+    overlay.addEventListener("click", (e)=>{
+      if(e.target===overlay){ finish(false); return; }
+      const b = e.target.closest(".ui-confirm-btn");
+      if(b) finish(b.dataset.r==="1");
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
 function esc(s){
   if(s===undefined||s===null) return "";
   return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
