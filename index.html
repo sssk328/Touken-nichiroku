@@ -394,6 +394,13 @@ textarea{resize:vertical; min-height:70px;}
   border-radius:50%;
   position:relative;
 }
+/* 印鑑画像（方式 image）。--seal-size で印の大きさを変えられる */
+.diary-stamp .seal{ width:var(--seal-size,44px); height:var(--seal-size,44px); }
+.diary-stamp .seal img.seal-img,
+.diary-item .diary-stamp .seal img.seal-img{
+  display:block; width:100%; height:100%; margin:0; border-radius:0; object-fit:contain;
+}
+.diary-stamp.seal-missing{ visibility:hidden; }
 .diary-log{
   margin-top:16px;
 }
@@ -2924,15 +2931,185 @@ function warekiNow(){
   return `${y}年 ${m} ${day}日`;
 }
 
+/* ============================================================
+   承認判（日誌の近侍の印）
+   ------------------------------------------------------------
+   SEAL_MODE で表示方式を切り替える（この1行を書き換えるだけで切替・復元できる）
+     "image" … ZIPに入れた刀剣男士名の印鑑画像(○○○.png)を表示する（現在）
+     "char"  … 下の SEAL_CHARS で指定した一文字を判子にして表示する（予備として残してある）
+   ============================================================ */
+const SEAL_MODE = "image";
+
+/* ---------- 方式 "image"：印鑑画像ZIP ---------- */
+/* 画像ZIPの置き場所（このHTMLと同じフォルダ）。上から順に探して、最初に見つかったものを使う */
+const SEAL_ZIP_CANDIDATES = ["inkan.zip", "日録用_刀剣男士名印鑑.zip"];
+/* ZIPを差し替えたときは、この数字を1つ上げる（端末に保存した古いZIPを破棄して取り直す） */
+const SEAL_ZIP_VERSION = 1;
+
+/* 刀剣男士名の照合用キー：空白を除き、文字の表現ゆれ(濁点など)をそろえる */
+function sealNormKey(name){
+  return String(name||"").replace(/[\s\u3000]+/g, "").normalize("NFC");
+}
+
+/* ZIPを取得（端末のキャッシュに保存して、2回目以降は通信しない） */
+async function sealFetchZip(){
+  const cacheName = "seal-zip-v" + SEAL_ZIP_VERSION;
+  const hasCache = (typeof caches !== "undefined");
+  if(hasCache){
+    try{ // 古い版のキャッシュを掃除
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(k=>k.indexOf("seal-zip-v")===0 && k!==cacheName).map(k=>caches.delete(k)));
+    }catch(e){}
+  }
+  for(const url of SEAL_ZIP_CANDIDATES){
+    try{
+      if(hasCache){
+        const c = await caches.open(cacheName);
+        const hit = await c.match(url);
+        if(hit) return await hit.arrayBuffer();
+        const r = await fetch(url);
+        if(!r.ok) continue;
+        try{ await c.put(url, r.clone()); }catch(e){}
+        return await r.arrayBuffer();
+      }
+      const r = await fetch(url);
+      if(r.ok) return await r.arrayBuffer();
+    }catch(e){ /* 次の候補へ */ }
+  }
+  return null;
+}
+
+/* ZIPの目次(セントラルディレクトリ)を読み、「男士名 → 位置情報」の表を作る（外部ライブラリ不要） */
+function sealParseZip(buf){
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  let eocd = -1;
+  for(let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65535); i--){
+    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
+  }
+  if(eocd < 0) return null;
+  const count = dv.getUint16(eocd + 10, true);
+  let p = dv.getUint32(eocd + 16, true);
+  const dec = new TextDecoder("utf-8");
+  const map = new Map();
+  for(let n = 0; n < count; n++){
+    if(dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true);
+    const csize = dv.getUint32(p + 20, true);
+    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
+    const offset = dv.getUint32(p + 42, true);
+    const fname = dec.decode(u8.subarray(p + 46, p + 46 + nameLen));
+    p += 46 + nameLen + extraLen + cmtLen;
+    const base = fname.split("/").pop();
+    if(!/\.png$/i.test(base) || base.indexOf("._") === 0 || fname.indexOf("__MACOSX") === 0) continue;
+    map.set(sealNormKey(base.replace(/\.png$/i, "")), {method, csize, offset});
+  }
+  return map;
+}
+
+/* ZIP内の1ファイルを取り出す（必要になった画像だけ展開する） */
+async function sealExtract(buf, e){
+  const dv = new DataView(buf);
+  const nameLen = dv.getUint16(e.offset + 26, true), extraLen = dv.getUint16(e.offset + 28, true);
+  const start = e.offset + 30 + nameLen + extraLen;
+  const raw = buf.slice(start, start + e.csize);
+  if(e.method === 0) return raw;
+  if(e.method === 8){
+    const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return await new Response(stream).arrayBuffer();
+  }
+  return null;
+}
+
+let sealBuf = null, sealDir = null, sealLoadPromise = null;
+const sealUrlPromises = new Map();   // 男士名キー → Promise<画像URL|null>
+const sealUrlResolved = new Map();   // 男士名キー → 画像URL（取得済みのもの）
+
+function sealLoadZip(){
+  if(!sealLoadPromise){
+    sealLoadPromise = (async()=>{
+      const buf = await sealFetchZip();
+      if(!buf) return false;
+      const dir = sealParseZip(buf);
+      if(!dir) return false;
+      sealBuf = buf; sealDir = dir;
+      return true;
+    })();
+  }
+  return sealLoadPromise;
+}
+
+/* 刀剣男士名から印鑑画像のURLを得る。画像が無ければ null */
+function sealImageUrl(name){
+  const key = sealNormKey(name);
+  if(!key) return Promise.resolve(null);
+  if(sealUrlPromises.has(key)) return sealUrlPromises.get(key);
+  const p = (async()=>{
+    try{
+      if(!(await sealLoadZip())) return null;
+      const e = sealDir.get(key);
+      if(!e) return null;
+      const ab = await sealExtract(sealBuf, e);
+      if(!ab) return null;
+      const url = URL.createObjectURL(new Blob([ab], {type:"image/png"}));
+      sealUrlResolved.set(key, url);
+      return url;
+    }catch(err){
+      console.warn("印鑑画像の読み込みに失敗:", key, err);
+      return null;
+    }
+  })();
+  sealUrlPromises.set(key, p);
+  return p;
+}
+
+/* 画面に出た印鑑の <img> に、読み込んだ画像を順次セットする */
+function hydrateSealImages(){
+  document.querySelectorAll("img.seal-img[data-seal-name]:not([data-seal-state])").forEach(img=>{
+    img.dataset.sealState = "loading";
+    sealImageUrl(img.dataset.sealName).then(url=>{
+      if(url){ img.src = url; img.dataset.sealState = "ok"; }
+      else{
+        img.dataset.sealState = "none";
+        const box = img.closest(".diary-stamp");
+        if(box) box.classList.add("seal-missing");   // 画像が無い男士は印を出さない
+      }
+    });
+  });
+}
+(function initSealObserver(){
+  if(SEAL_MODE !== "image") return;
+  const start = ()=>{
+    hydrateSealImages();
+    new MutationObserver(()=>hydrateSealImages()).observe(document.body, {childList:true, subtree:true});
+  };
+  if(document.body) start(); else document.addEventListener("DOMContentLoaded", start);
+})();
+
+/* 方式 "image" の印のHTML（画像は後から hydrateSealImages が差し込む） */
+function sealHtmlImage(kinjiName){
+  const key = sealNormKey(kinjiName);
+  if(!key) return "";
+  const cached = sealUrlResolved.get(key);   // 取得済みなら最初から画像を入れてちらつきを防ぐ
+  const srcAttr = cached ? ` src="${cached}" data-seal-state="ok"` : "";
+  return `<div class="diary-stamp" title="近侍: ${escAttr(kinjiName)}">
+    <div class="seal"><img class="seal-img" data-seal-name="${escAttr(kinjiName)}"${srcAttr} alt="" decoding="async" draggable="false"></div>
+  </div>`;
+}
+
+/* ---------- 方式 "char"：指定した一文字の判子（予備。SEAL_MODE を "char" にすると使われる） ---------- */
 /*
   近侍ごとの刻印文字の指定表。 「刀剣男士名: 刻印にする一文字」 の形式。
   新しい刀剣男士が実装されたら、ここに1行ずつ書き足すだけで反映される。
   ・名前の空白(半角・全角)は無視して照合するので、"童子切安綱 剥落" でも "童子切安綱剥落" でも可。
-  ・ここに無い男士は、従来どおり「名前の最初の漢字(無ければ先頭の一文字)」になる。
+  ・ここに無い男士は「名前の最初の漢字(無ければ先頭の一文字)」になる。
 */
 const SEAL_CHARS = {
-  "童子切安綱剥落": "剥",  "三日月宗近": "月", "小狐丸": "狐", "石切丸": "石", "岩融": "岩", "今剣": "今",
-  "大典太光世": "典", "ソハヤノツルキ": "ソ", "数珠丸恒次": "数"
+  "童子切安綱剥落": "剥",
+  "三日月宗近": "月",
+  "小狐丸": "狐",
+  "石切丸": "石",
+  "岩融": "岩",
+  "今剣": "今"
 };
 
 /* 近侍名から刻印用の一文字を取り出す（指定表を優先、無ければ漢字優先で先頭の一文字） */
@@ -2945,7 +3122,7 @@ function firstSealChar(name){
 }
 
 /* 承認判（刻印）のHTMLを生成。文字はSVG内に描画し、枠のサイズに合わせて自動で拡大縮小する */
-function sealHtml(kinjiName){
+function sealHtmlChar(kinjiName){
   const ch = firstSealChar(kinjiName);
   if(!ch) return "";
   return `<div class="diary-stamp" title="近侍: ${escAttr(kinjiName)}">
@@ -2958,6 +3135,11 @@ function sealHtml(kinjiName){
       </svg>
     </div>
   </div>`;
+}
+
+/* 日誌から呼ばれる入口。SEAL_MODE に応じて方式を切り替える */
+function sealHtml(kinjiName){
+  return SEAL_MODE === "char" ? sealHtmlChar(kinjiName) : sealHtmlImage(kinjiName);
 }
 
 function kinjiFieldHtml(id, currentVal){
