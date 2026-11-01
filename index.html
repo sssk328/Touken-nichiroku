@@ -427,22 +427,26 @@ textarea{resize:vertical; min-height:70px;}
 }
 .ui-confirm{
   width:100%; max-width:320px; background:var(--kinari); color:var(--black);
-  border-radius:var(--radius); box-shadow:var(--shadow); padding:20px 22px 12px;
+  border-radius:var(--radius); box-shadow:var(--shadow); padding:0 0 10px; overflow:hidden;
 }
+/* 青のバナー（見出し） */
 .ui-confirm-title{
-  font-size:1rem; font-weight:700; letter-spacing:0.12em; color:var(--black);
+  background:var(--ai); color:#fff; padding:14px 20px;
+  font-size:1.2rem; font-weight:700; letter-spacing:0.12em;
 }
-.ui-confirm-mark{ color:var(--ai); }
+.ui-confirm-mark{ color:#fff; }
 .ui-confirm-msg{
-  margin:20px 0 22px; text-align:center; font-size:0.92rem; line-height:1.7;
-  white-space:pre-line; color:var(--black); word-break:break-all;
+  margin:24px 22px 24px; text-align:center; color:var(--black);
 }
-.ui-confirm-actions{ display:flex; justify-content:flex-end; gap:6px; }
+.ui-confirm-msg-inner{
+  display:inline-block; font-size:1.05rem; line-height:1.8;
+  white-space:pre; /* 折り返さない（改行文字のみ反映） */
+}
+.ui-confirm-actions{ display:flex; justify-content:flex-end; gap:6px; padding:0 14px; }
 .ui-confirm-btn{
-  background:none; border:none; color:var(--ai); font-size:0.95rem; letter-spacing:0.1em;
-  padding:10px 14px; border-radius:10px; cursor:pointer;
+  background:none; border:none; color:var(--ai); font-size:1rem; letter-spacing:0.1em;
+  padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:700;
 }
-.ui-confirm-btn.ok{ font-weight:700; }
 
 /* 日誌フォーム：記録済み男士の一覧（確認ボタンの下） */
 .tlog-list{ display:flex; flex-direction:column; }
@@ -3537,13 +3541,15 @@ function uiConfirm(message){
     overlay.innerHTML = `
       <div class="ui-confirm" role="dialog" aria-modal="true">
         <div class="ui-confirm-title"><span class="ui-confirm-mark">\u26A0\uFE0E</span> 確認 <span class="ui-confirm-mark">\u26A0\uFE0E</span></div>
-        <div class="ui-confirm-msg"></div>
+        <div class="ui-confirm-msg"><span class="ui-confirm-msg-inner"></span></div>
         <div class="ui-confirm-actions">
           <button type="button" class="ui-confirm-btn" data-r="0">戻る</button>
           <button type="button" class="ui-confirm-btn ok" data-r="1">許可</button>
         </div>
       </div>`;
-    overlay.querySelector(".ui-confirm-msg").textContent = message; // textContentで安全に表示（改行はCSSで反映）
+    const msgBox = overlay.querySelector(".ui-confirm-msg");
+    const msgInner = overlay.querySelector(".ui-confirm-msg-inner");
+    msgInner.textContent = message; // textContentで安全に表示（改行はCSSで反映）
     const finish = (result)=>{
       document.removeEventListener("keydown", onKey);
       overlay.remove();
@@ -3557,6 +3563,14 @@ function uiConfirm(message){
       if(b) finish(b.dataset.r==="1");
     });
     document.body.appendChild(overlay);
+    // 本文は折り返さず1行で表示。15文字以上など幅に収まらない場合は、左右に余白を残して収まるまで文字を縮小
+    const SIDE_MARGIN = 8, MIN_SIZE = 10;
+    let size = parseFloat(getComputedStyle(msgInner).fontSize);
+    const avail = msgBox.clientWidth - SIDE_MARGIN*2;
+    while(avail > 0 && msgInner.getBoundingClientRect().width > avail && size > MIN_SIZE){
+      size -= 0.5;
+      msgInner.style.fontSize = size + "px";
+    }
   });
 }
 
