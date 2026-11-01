@@ -2924,9 +2924,22 @@ function warekiNow(){
   return `${y}年 ${m} ${day}日`;
 }
 
-/* 近侍名から刻印用の一文字を取り出す（漢字優先、無ければ先頭の一文字） */
+/*
+  近侍ごとの刻印文字の指定表。 「刀剣男士名: 刻印にする一文字」 の形式。
+  新しい刀剣男士が実装されたら、ここに1行ずつ書き足すだけで反映される。
+  ・名前の空白(半角・全角)は無視して照合するので、"童子切安綱 剥落" でも "童子切安綱剥落" でも可。
+  ・ここに無い男士は、従来どおり「名前の最初の漢字(無ければ先頭の一文字)」になる。
+*/
+const SEAL_CHARS = {
+  "童子切安綱剥落": "剥",  "三日月宗近": "月", "小狐丸": "狐", "石切丸": "石", "岩融": "岩", "今剣": "今",
+  "大典太光世": "典", "ソハヤノツルキ": "ソ", "数珠丸恒次": "数"
+};
+
+/* 近侍名から刻印用の一文字を取り出す（指定表を優先、無ければ漢字優先で先頭の一文字） */
 function firstSealChar(name){
   if(!name) return "";
+  const key = String(name).replace(/[\s\u3000]+/g, "");
+  if(Object.prototype.hasOwnProperty.call(SEAL_CHARS, key)) return SEAL_CHARS[key];
   const m = name.match(/[\u4E00-\u9FFF\u3400-\u4DBF]/);
   return m ? m[0] : name.charAt(0);
 }
