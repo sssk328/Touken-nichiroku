@@ -299,8 +299,9 @@ textarea{resize:vertical; min-height:70px;}
 .seg button.active{background:var(--ai); color:var(--white); border-color:var(--ai);}
 
 /* Toushi grid */
-.toushi-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px;}
+.toushi-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;}
 .toushi-card{
+  min-width:0;
   border-radius:14px; padding:10px 6px; text-align:center;
   color:var(--black); box-shadow:var(--shadow); position:relative;
   min-height:96px; display:flex; flex-direction:column; justify-content:center; gap:3px;
@@ -424,7 +425,8 @@ textarea{resize:vertical; min-height:70px;}
   font-size:0.72rem; color:rgba(28,26,23,0.55); letter-spacing:0.04em;
   margin:-6px 0 12px 0; line-height:1.5;
 }
-.ranbu-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.ranbu-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none; }
+.ranbu-scroll::-webkit-scrollbar{ display:none; }
 /* 固定列の縦線がスクロールで動かないよう、border-collapseではなくseparateで各セルに罫線を持たせる */
 .ranbu-table{ border-collapse:separate; border-spacing:0; width:100%; min-width:560px; font-size:0.8rem; text-align:center; }
 .ranbu-table th, .ranbu-table td{
@@ -1720,14 +1722,32 @@ function fitToushiExp(main){
 
 /* 名前の文字数が多い場合、1行に収まるよう自動でフォントサイズを縮小する */
 function fitToushiNames(main){
+  const FULL_SIZE_CHARS = 5;  // この文字数までは通常のサイズで表示
+  const SIDE_MARGIN = 4;      // 名前の左右に最低限残す余白(px)。カード自体のパディングに加算される
+  const MIN_SIZE = 6;         // これ以下には縮小しない(px)
   $$(".toushi-card .tname", main).forEach(el=>{
     // 直前の縮小結果をリセットしてから再計測する（フォント読み込み後の再実行対策）
     el.style.fontSize = "";
     const baseSize = parseFloat(getComputedStyle(el).fontSize);
-    const minSize = baseSize * 0.6;
+    const charCount = [...(el.textContent||"").trim()].length;
+    // 文字の実幅(折り返さず1行で並べた幅)を測る
+    const naturalWidth = ()=>{
+      const prev = el.style.width;
+      el.style.width = "max-content";
+      const w = el.getBoundingClientRect().width;
+      el.style.width = prev;
+      return w;
+    };
     let size = baseSize;
-    while(el.scrollWidth > el.clientWidth + 0.5 && size > minSize){
-      size -= 1;
+    // 6文字以上：5文字ぶんの幅に収まる大きさまで縮小
+    if(charCount > FULL_SIZE_CHARS){
+      size = Math.max(MIN_SIZE, baseSize * FULL_SIZE_CHARS / charCount);
+      el.style.fontSize = size + "px";
+    }
+    // 念のため：左右に余白を残した幅に収まらない場合はさらに縮小
+    const avail = el.clientWidth - SIDE_MARGIN*2;
+    while(avail > 0 && naturalWidth() > avail && size > MIN_SIZE){
+      size -= 0.5;
       el.style.fontSize = size + "px";
     }
   });
