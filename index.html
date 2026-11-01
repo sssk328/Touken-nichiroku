@@ -2935,164 +2935,28 @@ function warekiNow(){
    承認判（日誌の近侍の印）
    ------------------------------------------------------------
    SEAL_MODE で表示方式を切り替える（この1行を書き換えるだけで切替・復元できる）
-     "image" … ZIPに入れた刀剣男士名の印鑑画像(○○○.png)を表示する（現在）
+     "image" … フォルダ SEAL_DIR に置いた刀剣男士名の印鑑画像(○○○.png)を表示する（現在）
      "char"  … 下の SEAL_CHARS で指定した一文字を判子にして表示する（予備として残してある）
    ============================================================ */
 const SEAL_MODE = "image";
 
-/* ---------- 方式 "image"：印鑑画像ZIP ---------- */
-/* 画像ZIPの置き場所（このHTMLと同じフォルダ）。上から順に探して、最初に見つかったものを使う */
-const SEAL_ZIP_CANDIDATES = ["inkan.zip", "日録用_刀剣男士名印鑑.zip"];
-/* ZIPを差し替えたときは、この数字を1つ上げる（端末に保存した古いZIPを破棄して取り直す） */
-const SEAL_ZIP_VERSION = 1;
+/* ---------- 方式 "image"：印鑑画像（GitHub上のフォルダに置いたPNG） ---------- */
+/* 画像を入れるフォルダ名（このHTMLと同じ場所に作る）。中身は「刀剣男士名.png」にそろえる */
+const SEAL_DIR = "男士名_印鑑";
 
-/* 刀剣男士名の照合用キー：空白を除き、文字の表現ゆれ(濁点など)をそろえる */
+/* 刀剣男士名の照合用：空白を除き、文字の表現ゆれ(濁点など)をそろえる */
 function sealNormKey(name){
   return String(name||"").replace(/[\s\u3000]+/g, "").normalize("NFC");
 }
 
-/* ZIPを取得（端末のキャッシュに保存して、2回目以降は通信しない） */
-async function sealFetchZip(){
-  const cacheName = "seal-zip-v" + SEAL_ZIP_VERSION;
-  const hasCache = (typeof caches !== "undefined");
-  if(hasCache){
-    try{ // 古い版のキャッシュを掃除
-      const keys = await caches.keys();
-      await Promise.all(keys.filter(k=>k.indexOf("seal-zip-v")===0 && k!==cacheName).map(k=>caches.delete(k)));
-    }catch(e){}
-  }
-  for(const url of SEAL_ZIP_CANDIDATES){
-    try{
-      if(hasCache){
-        const c = await caches.open(cacheName);
-        const hit = await c.match(url);
-        if(hit) return await hit.arrayBuffer();
-        const r = await fetch(url);
-        if(!r.ok) continue;
-        try{ await c.put(url, r.clone()); }catch(e){}
-        return await r.arrayBuffer();
-      }
-      const r = await fetch(url);
-      if(r.ok) return await r.arrayBuffer();
-    }catch(e){ /* 次の候補へ */ }
-  }
-  return null;
-}
-
-/* ZIPの目次(セントラルディレクトリ)を読み、「男士名 → 位置情報」の表を作る（外部ライブラリ不要） */
-function sealParseZip(buf){
-  const dv = new DataView(buf), u8 = new Uint8Array(buf);
-  let eocd = -1;
-  for(let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 22 - 65535); i--){
-    if(dv.getUint32(i, true) === 0x06054b50){ eocd = i; break; }
-  }
-  if(eocd < 0) return null;
-  const count = dv.getUint16(eocd + 10, true);
-  let p = dv.getUint32(eocd + 16, true);
-  const dec = new TextDecoder("utf-8");
-  const map = new Map();
-  for(let n = 0; n < count; n++){
-    if(dv.getUint32(p, true) !== 0x02014b50) break;
-    const method = dv.getUint16(p + 10, true);
-    const csize = dv.getUint32(p + 20, true);
-    const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
-    const offset = dv.getUint32(p + 42, true);
-    const fname = dec.decode(u8.subarray(p + 46, p + 46 + nameLen));
-    p += 46 + nameLen + extraLen + cmtLen;
-    const base = fname.split("/").pop();
-    if(!/\.png$/i.test(base) || base.indexOf("._") === 0 || fname.indexOf("__MACOSX") === 0) continue;
-    map.set(sealNormKey(base.replace(/\.png$/i, "")), {method, csize, offset});
-  }
-  return map;
-}
-
-/* ZIP内の1ファイルを取り出す（必要になった画像だけ展開する） */
-async function sealExtract(buf, e){
-  const dv = new DataView(buf);
-  const nameLen = dv.getUint16(e.offset + 26, true), extraLen = dv.getUint16(e.offset + 28, true);
-  const start = e.offset + 30 + nameLen + extraLen;
-  const raw = buf.slice(start, start + e.csize);
-  if(e.method === 0) return raw;
-  if(e.method === 8){
-    const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    return await new Response(stream).arrayBuffer();
-  }
-  return null;
-}
-
-let sealBuf = null, sealDir = null, sealLoadPromise = null;
-const sealUrlPromises = new Map();   // 男士名キー → Promise<画像URL|null>
-const sealUrlResolved = new Map();   // 男士名キー → 画像URL（取得済みのもの）
-
-function sealLoadZip(){
-  if(!sealLoadPromise){
-    sealLoadPromise = (async()=>{
-      const buf = await sealFetchZip();
-      if(!buf) return false;
-      const dir = sealParseZip(buf);
-      if(!dir) return false;
-      sealBuf = buf; sealDir = dir;
-      return true;
-    })();
-  }
-  return sealLoadPromise;
-}
-
-/* 刀剣男士名から印鑑画像のURLを得る。画像が無ければ null */
-function sealImageUrl(name){
-  const key = sealNormKey(name);
-  if(!key) return Promise.resolve(null);
-  if(sealUrlPromises.has(key)) return sealUrlPromises.get(key);
-  const p = (async()=>{
-    try{
-      if(!(await sealLoadZip())) return null;
-      const e = sealDir.get(key);
-      if(!e) return null;
-      const ab = await sealExtract(sealBuf, e);
-      if(!ab) return null;
-      const url = URL.createObjectURL(new Blob([ab], {type:"image/png"}));
-      sealUrlResolved.set(key, url);
-      return url;
-    }catch(err){
-      console.warn("印鑑画像の読み込みに失敗:", key, err);
-      return null;
-    }
-  })();
-  sealUrlPromises.set(key, p);
-  return p;
-}
-
-/* 画面に出た印鑑の <img> に、読み込んだ画像を順次セットする */
-function hydrateSealImages(){
-  document.querySelectorAll("img.seal-img[data-seal-name]:not([data-seal-state])").forEach(img=>{
-    img.dataset.sealState = "loading";
-    sealImageUrl(img.dataset.sealName).then(url=>{
-      if(url){ img.src = url; img.dataset.sealState = "ok"; }
-      else{
-        img.dataset.sealState = "none";
-        const box = img.closest(".diary-stamp");
-        if(box) box.classList.add("seal-missing");   // 画像が無い男士は印を出さない
-      }
-    });
-  });
-}
-(function initSealObserver(){
-  if(SEAL_MODE !== "image") return;
-  const start = ()=>{
-    hydrateSealImages();
-    new MutationObserver(()=>hydrateSealImages()).observe(document.body, {childList:true, subtree:true});
-  };
-  if(document.body) start(); else document.addEventListener("DOMContentLoaded", start);
-})();
-
-/* 方式 "image" の印のHTML（画像は後から hydrateSealImages が差し込む） */
+/* 方式 "image" の印のHTML。画像が無い男士は、読み込み失敗時に印ごと非表示になる */
 function sealHtmlImage(kinjiName){
   const key = sealNormKey(kinjiName);
   if(!key) return "";
-  const cached = sealUrlResolved.get(key);   // 取得済みなら最初から画像を入れてちらつきを防ぐ
-  const srcAttr = cached ? ` src="${cached}" data-seal-state="ok"` : "";
+  const src = SEAL_DIR + "/" + encodeURIComponent(key) + ".png";
   return `<div class="diary-stamp" title="近侍: ${escAttr(kinjiName)}">
-    <div class="seal"><img class="seal-img" data-seal-name="${escAttr(kinjiName)}"${srcAttr} alt="" decoding="async" draggable="false"></div>
+    <div class="seal"><img class="seal-img" src="${src}" alt="" loading="lazy" decoding="async" draggable="false"
+      onerror="this.closest('.diary-stamp').classList.add('seal-missing')"></div>
   </div>`;
 }
 
