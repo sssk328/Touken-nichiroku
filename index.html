@@ -192,12 +192,6 @@ main{flex:1; padding:16px 16px 100px 16px; max-width:640px; margin:0 auto; width
   display:flex; align-items:center; gap:10px;
 }
 .menu-item span.num{opacity:0.7; font-size:0.75rem;}
-.menu-close{
-  margin-top:auto;
-  align-self:flex-end;
-  color:var(--white); background:none; border:none; font-size:0.85rem;
-  letter-spacing:0.1em; text-decoration:underline;
-}
 
 /* Bottom tabs */
 .bottom-tabs{
@@ -318,6 +312,7 @@ textarea{resize:vertical; min-height:70px;}
 .toushi-card .tmeta{display:flex; align-items:center; justify-content:center; gap:8px; margin-top:3px;}
 .toushi-card .tstatus{font-size:0.66rem; opacity:0.9;}
 .toushi-card .tlv{font-size:0.68rem; opacity:0.85;}
+.toushi-card .tlv.fit{display:inline-block; white-space:nowrap; max-width:100%;}
 .toushi-card .ticons{position:absolute; top:5px; right:6px; font-size:0.62rem; display:flex; gap:2px;}
 .toushi-card .tno{position:absolute; top:5px; left:6px; font-size:0.6rem; opacity:0.75; letter-spacing:0.02em;}
 .fab-edit{
@@ -360,6 +355,8 @@ textarea{resize:vertical; min-height:70px;}
   font-size:0.76rem; letter-spacing:0.03em; text-align:center;
 }
 .event-mode-btn.on{ background:var(--ai); color:var(--white); border-color:var(--ai); }
+.event-mode-select.second{ margin-top:8px; }
+.event-mode-select .event-mode-btn{ white-space:nowrap; padding-left:2px; padding-right:2px; }
 
 .dhead{
   display:flex; justify-content:space-between; align-items:baseline; gap:8px;
@@ -421,6 +418,53 @@ textarea{resize:vertical; min-height:70px;}
 .fab-add{
   display:block; width:100%; text-align:center; margin-top:6px;
 }
+
+/* 指南書：注意書き・乱舞Lv必要数の表 */
+.shinansho-note{
+  font-size:0.72rem; color:rgba(28,26,23,0.55); letter-spacing:0.04em;
+  margin:-6px 0 12px 0; line-height:1.5;
+}
+.ranbu-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+/* 固定列の縦線がスクロールで動かないよう、border-collapseではなくseparateで各セルに罫線を持たせる */
+.ranbu-table{ border-collapse:separate; border-spacing:0; width:100%; min-width:560px; font-size:0.8rem; text-align:center; }
+.ranbu-table th, .ranbu-table td{
+  padding:8px 6px; border-bottom:1px solid var(--line); white-space:nowrap;
+  font-weight:400;
+}
+.ranbu-table tr:last-child th, .ranbu-table tr:last-child td{ border-bottom:none; }
+/* 見出し系（レア度・1〜5・Lv.○・計）は少し太め、数値は通常の太さ */
+.ranbu-table th{ font-weight:700; color:var(--kon); }
+.ranbu-table th:first-child{
+  position:sticky; left:0; background:var(--white); z-index:1;
+  border-right:1px solid var(--line);
+}
+.ranbu-table .sum{ border-left:1px solid var(--line); }
+
+/* 刀剣男士：見出し行＋並び替えボタン */
+.toushi-title-row{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-bottom:14px;
+}
+.toushi-title-row .section-title{ margin-bottom:0; flex:1; min-width:0; }
+.toushi-sort-wrap{ position:relative; flex:none; display:flex; align-items:center; }
+.toushi-sort-btn{
+  background:none; border:none; padding:4px 2px; color:var(--ai);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+}
+.toushi-sort-btn svg{ height:1.05rem; width:auto; display:block; fill:currentColor; }
+.toushi-sort-menu{
+  position:absolute; right:0; top:calc(100% + 6px); z-index:60;
+  min-width:150px; background:var(--white);
+  border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow);
+  padding:4px; display:none;
+}
+.toushi-sort-menu.open{ display:block; }
+.toushi-sort-menu button{
+  display:block; width:100%; text-align:left; background:none; border:none;
+  padding:10px 12px; border-radius:8px; font-size:0.85rem; color:var(--kon);
+  letter-spacing:0.05em;
+}
+.toushi-sort-menu button.active{ background:var(--ai); color:var(--white); }
 
 /* 日誌：年・月プルダウン */
 .diary-filter-row{
@@ -631,7 +675,6 @@ textarea{resize:vertical; min-height:70px;}
       <button class="menu-item" data-route="diary"><span class="num">6</span>日誌</button>
       <button class="menu-item" data-route="shinansho"><span class="num">7</span>指南書</button>
       <button class="menu-item" data-route="transfer"><span class="num">8</span>データ引き継ぎ</button>
-      <button class="menu-close" id="menuCloseBtn">閉じる</button>
     </div>
   </div>
 
@@ -1234,7 +1277,6 @@ function renderHome(main){
 /* ============ Menu ============ */
 $("#hamburgerBtn").addEventListener("click", ()=> $("#sideMenu").classList.add("open"));
 $("#menuOverlay").addEventListener("click", ()=> $("#sideMenu").classList.remove("open"));
-$("#menuCloseBtn").addEventListener("click", ()=> $("#sideMenu").classList.remove("open"));
 $("#topBanner").addEventListener("click", ()=>{ navigate("home"); });
 $$(".menu-item").forEach(btn=>{
   btn.addEventListener("click", ()=>{
@@ -1532,10 +1574,58 @@ function renderBasicEdit(main){
 }
 
 /* ============ 2. 刀剣男士 ============ */
+/* 並び替えモード定義（先頭がデフォルト） */
+const TOUSHI_SORT_MODES = [
+  {key:"touchou", label:"刀帳番号"},
+  {key:"kenka",   label:"顕現日"},
+  {key:"ranbu",   label:"乱舞Lv"},
+  {key:"exp",     label:"累積経験値"}
+];
+/* 数値化（空・不正値は0）。カンマ混じりでも読めるようにする */
+function toushiNum(v){
+  const n = parseFloat(String(v==null?"":v).replace(/,/g,""));
+  return isNaN(n) ? 0 : n;
+}
+/* 顕現日を YYYYMMDD の数値にする（YYYY-MM-DD／YYYY/MM/DD どちらでも可。未入力は末尾へ） */
+function toushiKenkaValue(t){
+  const digits = String(t.kenkaDate||"").replace(/\D/g,"");
+  return digits ? parseInt(digits,10) : Infinity;
+}
+/* Infinity同士でもNaNにならない安全な昇順比較 */
+function cmpAsc(a,b){ return a===b ? 0 : (a<b ? -1 : 1); }
+function sortToushiList(arr, mode){
+  const byTouchou = (a,b)=> cmpAsc(touchoSortValue(a), touchoSortValue(b));
+  const list = [...arr];
+  if(mode==="kenka"){
+    // 古い順→同日は刀帳番号の小さい順
+    list.sort((a,b)=> cmpAsc(toushiKenkaValue(a), toushiKenkaValue(b)) || byTouchou(a,b));
+  }else if(mode==="ranbu"){
+    // 乱舞Lvの大きい順→同Lvは刀帳番号の小さい順
+    list.sort((a,b)=> cmpAsc(toushiNum(b.ranbuLv), toushiNum(a.ranbuLv)) || byTouchou(a,b));
+  }else if(mode==="exp"){
+    // 累積経験値の大きい順（特極問わず数値のみ）→同値は刀帳番号の小さい順
+    list.sort((a,b)=> cmpAsc(toushiNum(b.exp), toushiNum(a.exp)) || byTouchou(a,b));
+  }else{
+    // 刀帳番号（初を優先、無ければ極）が小さい順
+    list.sort(byTouchou);
+  }
+  return list;
+}
+
 function renderToushiList(main){
-  // 入力された刀帳番号（初を優先、無ければ極）が小さい順に自動で並べる
-  const list = [...DATA.toushi].sort((a,b)=> touchoSortValue(a)-touchoSortValue(b));
-  let html = `<div class="section-title">刀剣男士</div>`;
+  const curMode = TOUSHI_SORT_MODES.some(m=>m.key===DATA.toushiSortMode) ? DATA.toushiSortMode : "touchou";
+  const list = sortToushiList(DATA.toushi, curMode);
+  const sortIcon = `<svg viewBox="0 0 1627 1169" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="0" y="0" width="1627" height="313"/><rect x="503" y="428" width="1124" height="313"/><rect x="879" y="856" width="748" height="313"/></svg>`;
+  let html = `
+    <div class="toushi-title-row">
+      <div class="section-title">刀剣男士</div>
+      <div class="toushi-sort-wrap">
+        <button type="button" class="toushi-sort-btn" id="toushiSortBtn" aria-label="並び替え">${sortIcon}</button>
+        <div class="toushi-sort-menu" id="toushiSortMenu">
+          ${TOUSHI_SORT_MODES.map(m=>`<button type="button" data-mode="${m.key}" class="${m.key===curMode?'active':''}">${m.label}</button>`).join("")}
+        </div>
+      </div>
+    </div>`;
   if(list.length===0){
     html += `<div class="empty-hint">まだ登録されていません</div>`;
   }else{
@@ -1548,12 +1638,24 @@ function renderToushiList(main){
       (t.banchou||[]).forEach(r=> badges.push(BANCHO_ABBR[r]||r));
       const badgeHtml = badges.map(c=>`<span>${esc(c)}</span>`).join("");
       const noLabel = touchoNoLabel(t);
+      // 並び替えモードに応じてカード下部の表示を切り替える（通常は「状態＋Lv」）
+      let metaHtml;
+      if(curMode==="kenka"){
+        const kd = String(t.kenkaDate||"").replace(/-/g,"/");
+        metaHtml = `<span class="tlv">${esc(kd)||"—"}</span>`;
+      }else if(curMode==="ranbu"){
+        metaHtml = `<span class="tlv">Lv ${formatNum(t.ranbuLv||0)}</span>`;
+      }else if(curMode==="exp"){
+        metaHtml = `<span class="tlv fit">${formatNum(t.exp||0)}</span>`;
+      }else{
+        metaHtml = `<span class="tstatus">${t.status||"初"}</span><span class="tlv">Lv${formatNum(t.lv||0)}</span>`;
+      }
       html += `
         <div class="toushi-card" data-id="${t.id}" style="background:${color}; color:${textColor}; border-color:${textColor==='#1c1a17' ? 'var(--line)' : 'rgba(253,252,246,0.3)'};">
           ${noLabel ? `<div class="tno">${esc(noLabel)}</div>` : ""}
           <div class="ticons">${badgeHtml}</div>
           <div class="tname">${esc(t.name)}</div>
-          <div class="tmeta"><span class="tstatus">${t.status||"初"}</span><span class="tlv">Lv${formatNum(t.lv||0)}</span></div>
+          <div class="tmeta">${metaHtml}</div>
         </div>`;
     });
     html += `</div>`;
@@ -1562,7 +1664,58 @@ function renderToushiList(main){
   main.innerHTML = html;
   setupToushiDrag(main);
   fitToushiNames(main);
+  if(curMode==="exp") fitToushiExp(main);
   $("#addToushiBtn").addEventListener("click", ()=>{ navigate("toushi/new"); });
+
+  // 並び替えメニューの開閉・選択
+  const sortBtn = $("#toushiSortBtn", main);
+  const sortMenu = $("#toushiSortMenu", main);
+  const closeSortMenu = (e)=>{
+    if(e && sortMenu.contains(e.target)) return;
+    sortMenu.classList.remove("open");
+    document.removeEventListener("click", closeSortMenu);
+  };
+  sortBtn.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    const willOpen = !sortMenu.classList.contains("open");
+    sortMenu.classList.toggle("open", willOpen);
+    document.removeEventListener("click", closeSortMenu);
+    if(willOpen) document.addEventListener("click", closeSortMenu);
+  });
+  $$("#toushiSortMenu button", main).forEach(b=>{
+    b.addEventListener("click", ()=>{
+      document.removeEventListener("click", closeSortMenu);
+      DATA.toushiSortMode = b.dataset.mode;
+      saveData();
+      renderToushiList(main);
+    });
+  });
+}
+
+/* 累積経験値(最大10桁想定)：1行のまま、カード左右に余白を残して収まるよう自動でフォントサイズを縮小する */
+function fitToushiExp(main){
+  const SIDE_MARGIN = 8; // カード内側の左右に最低限残す余白(px)。パディング6pxに加算される
+  $$(".toushi-card .tlv.fit", main).forEach(el=>{
+    const card = el.closest(".toushi-card");
+    if(!card) return;
+    el.style.fontSize = ""; // 前回の縮小結果をリセットして再計測
+    const cs = getComputedStyle(card);
+    const avail = card.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - SIDE_MARGIN*2;
+    if(avail <= 0) return;
+    const baseSize = parseFloat(getComputedStyle(el).fontSize);
+    const minSize = 6;
+    let size = baseSize;
+    while(el.getBoundingClientRect().width > avail && size > minSize){
+      size -= 0.5;
+      el.style.fontSize = size + "px";
+    }
+  });
+  // Webフォント読み込み後に幅が変わる場合に備えて再計測する
+  if(document.fonts && document.fonts.status !== "loaded"){
+    document.fonts.ready.then(()=>{
+      if(document.body.contains(main)) fitToushiExp(main);
+    });
+  }
 }
 
 /* 名前の文字数が多い場合、1行に収まるよう自動でフォントサイズを縮小する */
@@ -2183,12 +2336,12 @@ function eventMiniLabels(mode){
   if(mode==="tokumei") return {cur:"現在周回数", target:"目標周回数"};
   if(mode==="kp") return {cur:"顕現pt", target:"確保数"};
   if(mode==="osaka") return {cur:"獲得小判数", target:"目標小判数"};
-  return {cur:"現在pt", target:"目標pt"};
+  return {cur:"獲得pt", target:"目標pt"};
 }
 
 /* 終了日13:00を過ぎた開催中の催物を自動で戦績（アーカイブ）へ移動する。
-   現在pt/目標pt/残り日数のミニカードは開催中一覧にのみ表示される仕様のため、
-   アーカイブへ移動することで自然に非表示（リセット）となる。名称・期間・現在pt・
+   獲得pt/目標pt/残り日数のミニカードは開催中一覧にのみ表示される仕様のため、
+   アーカイブへ移動することで自然に非表示（リセット）となる。名称・期間・獲得pt・
    目標ptなど大元のカードが持つ数値データ自体は記録として保持し、書き換えない。 */
 function checkEventExpiry(){
   let changed = false;
@@ -2262,7 +2415,11 @@ function renderEventNew(main){
             <button type="button" class="event-mode-btn on" data-mode="normal">通常</button>
             <button type="button" class="event-mode-btn" data-mode="kp">鍛刀CP</button>
             <button type="button" class="event-mode-btn" data-mode="tokumei">特命調査</button>
+          </div>
+          <div class="event-mode-select second">
             <button type="button" class="event-mode-btn" data-mode="osaka">大阪城</button>
+            <button type="button" class="event-mode-btn" data-mode="senjutsu">戦術強化訓練</button>
+            <button type="button" class="event-mode-btn" data-mode="hihou">秘宝の里</button>
           </div>
         </div>
       </div>
@@ -2286,12 +2443,43 @@ function renderEventNew(main){
       lastPt:0, targetPt:0, goldUsed:0, rewards:"", drops:"",
       kpShizai:0, kpIraifuda:0, kpTetsudaifuda:0,
       osakaShirayama:0, osakaOnimaru:0,
+      senMaiSho:0, senMaiChu:0, senMaiJo:0,
+      hihouFue:0, hihouKoto:0, hihouShamisen:0, hihouTaiko:0, hihouSuzu:0,
       archived:false, archivedAt:0
     };
     DATA.events.push(e);
     saveData();
     navigate("event/edit/"+e.id);
   });
+}
+
+/* 催物詳細：モード別の追加カード（刀剣男士・枚数・楽器など） */
+function eventTextCard(label, text){
+  return `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">${label}</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${text}</div></div>`;
+}
+function eventRowsCard(label, rows){
+  const inner = rows.map(r=>`<div class="field-row"><span class="field-label">${r[0]}</span><span class="field-val">${formatNum(r[1]||0)}</span></div>`).join("");
+  return `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">${label}</label><div style="margin-top:4px;">${inner}</div></div>`;
+}
+function eventExtraCardsHtml(e, mode){
+  if(mode==="osaka"){
+    return (e.osakaShirayama ? eventTextCard("白山吉光", formatNum(e.osakaShirayama)) : "")
+         + (e.osakaOnimaru ? eventTextCard("鬼丸国綱", formatNum(e.osakaOnimaru)) : "");
+  }
+  if(mode==="kp"){
+    return e.rewards ? eventTextCard("刀剣男士", esc(e.rewards)) : "";
+  }
+  if(mode==="senjutsu"){
+    return eventRowsCard("枚数", [["初級", e.senMaiSho], ["中級", e.senMaiChu], ["上級", e.senMaiJo]])
+         + (e.rewards ? eventTextCard("刀剣男士(報酬)", esc(e.rewards)) : "")
+         + (e.drops ? eventTextCard("刀剣男士(ドロップ)", esc(e.drops)) : "");
+  }
+  if(mode==="hihou"){
+    return (e.rewards ? eventTextCard("刀剣男士", esc(e.rewards)) : "")
+         + eventRowsCard("楽器", [["笛", e.hihouFue], ["琴", e.hihouKoto], ["三味線", e.hihouShamisen], ["太鼓", e.hihouTaiko], ["鈴", e.hihouSuzu]]);
+  }
+  return (e.rewards ? eventTextCard("刀剣男士(報酬)", esc(e.rewards)) : "")
+       + (e.drops ? eventTextCard("刀剣男士(ドロップ)", esc(e.drops)) : "");
 }
 
 function renderEventView(main, id){
@@ -2318,7 +2506,8 @@ function renderEventView(main, id){
     fieldsHtml += `<div class="field-row"><span class="field-label">${labels.target}</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>`;
     fieldsHtml += `<div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>`;
     if(mode!=="tokumei" && mode!=="osaka"){
-      fieldsHtml += `<div class="field-row"><span class="field-label">消費小判数</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>`;
+      const goldLabel = (mode==="senjutsu" || mode==="hihou") ? "使用小判数" : "消費小判数";
+      fieldsHtml += `<div class="field-row"><span class="field-label">${goldLabel}</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>`;
     }
     fieldsHtml += `<div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>`;
   }
@@ -2329,13 +2518,7 @@ function renderEventView(main, id){
       <div class="period" style="margin-bottom:12px;">${esc(e.period)}</div>
       ${fieldsHtml}
     </div>
-    ${mode==="osaka"
-      ? `${e.osakaShirayama ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">白山吉光</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${formatNum(e.osakaShirayama)}</div></div>` : ""}
-         ${e.osakaOnimaru ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">鬼丸国綱</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${formatNum(e.osakaOnimaru)}</div></div>` : ""}`
-      : mode==="kp"
-      ? (e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : "")
-      : `${e.rewards ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(報酬)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.rewards)}</div></div>` : ""}
-         ${e.drops ? `<div class="card"><label style="font-size:0.78rem; color:rgba(28,26,23,0.6);">獲得刀剣男士(ドロップ)</label><div style="white-space:pre-wrap; line-height:1.7; margin-top:6px;">${esc(e.drops)}</div></div>` : ""}`}
+    ${eventExtraCardsHtml(e, mode)}
     <button class="fab-edit" id="editEventBtn" aria-label="編集">✎</button>
   `;
   $("#backBtn").addEventListener("click", ()=>{ navigate("event"); });
@@ -2364,18 +2547,36 @@ function renderEventEdit(main, id){
         <div><label>松</label><input type="number" id="ed_kpMatsu" value="${escAttr(e.kpMatsu)}" placeholder="未入力"></div>
         <div><label>竹</label><input type="number" id="ed_kpTake" value="${escAttr(e.kpTake)}" placeholder="未入力"></div>
         <div><label>梅</label><input type="number" id="ed_kpUme" value="${escAttr(e.kpUme)}" placeholder="未入力"></div>
-        <div><label>獲得刀剣男士</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>`;
+        <div><label>刀剣男士</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>`;
   }else if(mode==="osaka"){
     fieldsHtml += `
         <div><label>白山吉光</label><input type="number" id="ed_osakaShirayama" value="${escAttr(e.osakaShirayama)}"></div>
         <div><label>鬼丸国綱</label><input type="number" id="ed_osakaOnimaru" value="${escAttr(e.osakaOnimaru)}"></div>`;
   }else{
     if(mode!=="tokumei"){
-      fieldsHtml += `<div><label>消費小判数</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>`;
+      const goldLabel = (mode==="senjutsu" || mode==="hihou") ? "使用小判数" : "消費小判数";
+      fieldsHtml += `<div><label>${goldLabel}</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>`;
     }
-    fieldsHtml += `
-        <div><label>獲得刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
-        <div><label>獲得刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+    if(mode==="senjutsu"){
+      fieldsHtml += `
+        <div><label>枚数(初級)</label><input type="number" id="ed_senMaiSho" value="${escAttr(e.senMaiSho||0)}"></div>
+        <div><label>枚数(中級)</label><input type="number" id="ed_senMaiChu" value="${escAttr(e.senMaiChu||0)}"></div>
+        <div><label>枚数(上級)</label><input type="number" id="ed_senMaiJo" value="${escAttr(e.senMaiJo||0)}"></div>
+        <div><label>刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+    }else if(mode==="hihou"){
+      fieldsHtml += `
+        <div><label>刀剣男士</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>楽器(笛)</label><input type="number" id="ed_hihouFue" value="${escAttr(e.hihouFue||0)}"></div>
+        <div><label>楽器(琴)</label><input type="number" id="ed_hihouKoto" value="${escAttr(e.hihouKoto||0)}"></div>
+        <div><label>楽器(三味線)</label><input type="number" id="ed_hihouShamisen" value="${escAttr(e.hihouShamisen||0)}"></div>
+        <div><label>楽器(太鼓)</label><input type="number" id="ed_hihouTaiko" value="${escAttr(e.hihouTaiko||0)}"></div>
+        <div><label>楽器(鈴)</label><input type="number" id="ed_hihouSuzu" value="${escAttr(e.hihouSuzu||0)}"></div>`;
+    }else{
+      fieldsHtml += `
+        <div><label>刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+    }
   }
 
   main.innerHTML = `
@@ -2411,7 +2612,21 @@ function renderEventEdit(main, id){
       e.osakaOnimaru=Number($("#ed_osakaOnimaru").value)||0;
     }else{
       if(mode!=="tokumei"){ e.goldUsed=Number($("#ed_goldUsed").value)||0; }
-      e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+      if(mode==="senjutsu"){
+        e.senMaiSho=Number($("#ed_senMaiSho").value)||0;
+        e.senMaiChu=Number($("#ed_senMaiChu").value)||0;
+        e.senMaiJo=Number($("#ed_senMaiJo").value)||0;
+        e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+      }else if(mode==="hihou"){
+        e.hihouFue=Number($("#ed_hihouFue").value)||0;
+        e.hihouKoto=Number($("#ed_hihouKoto").value)||0;
+        e.hihouShamisen=Number($("#ed_hihouShamisen").value)||0;
+        e.hihouTaiko=Number($("#ed_hihouTaiko").value)||0;
+        e.hihouSuzu=Number($("#ed_hihouSuzu").value)||0;
+        e.rewards=$("#ed_rewards").value;
+      }else{
+        e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+      }
     }
     saveData();
     navigate("event/detail/"+id);
@@ -3027,10 +3242,51 @@ function fileToDataURL(file){
 }
 
 /* ============ 7. データ引き継ぎ ============ */
+/* 指南書：刀装レシピ（資材は 木炭／玉鋼／冷却材／砥石 の順） */
+const TOUSOU_RECIPES = [
+  {name:"軽歩・軽騎",   cost:"50/50/50/50"},
+  {name:"投石",         cost:"50/100/50/50"},
+  {name:"投石・弓",     cost:"50/150/50/50"},
+  {name:"弓",           cost:"50/151/50/50"},
+  {name:"銃",           cost:"101/201/100/100"},
+  {name:"重騎・精鋭",   cost:"150/100/250/150"},
+  {name:"盾・槍",       cost:"50/50/50/250"},
+  {name:"重歩",         cost:"250/100/50/50"}
+];
+/* 指南書：乱舞Lv必要数（レア度1〜5 × Lv.1〜10。合計は自動計算） */
+const RANBU_NEED = {
+  1:[1,1,8,8,8,16,16,16,19,19],
+  2:[1,1,7,7,7,15,15,15,18,18],
+  3:[1,1,5,5,5,11,11,11,13,13],
+  4:[1,1,3,3,3,7,7,7,10,10],
+  5:[1,1,2,2,2,5,5,5,8,8]
+};
+
 function renderShinansho(main){
+  const recipeRows = TOUSOU_RECIPES.map(r=>
+    `<div class="field-row"><span class="field-label">${esc(r.name)}</span><span class="field-val">${esc(r.cost)}</span></div>`
+  ).join("");
+
+  let ranbuHead = `<tr><th>レア度</th>`;
+  for(let lv=1; lv<=10; lv++) ranbuHead += `<th>Lv.${lv}</th>`;
+  ranbuHead += `<th class="sum">計</th></tr>`;
+  let ranbuBody = "";
+  [1,2,3,4,5].forEach(rare=>{
+    const arr = RANBU_NEED[rare];
+    const total = arr.reduce((s,n)=>s+n,0);
+    ranbuBody += `<tr><th>${rare}</th>${arr.map(n=>`<td>${n}</td>`).join("")}<td class="sum">${total}</td></tr>`;
+  });
+
   main.innerHTML = `
-    <div style="min-height:60vh; display:flex; align-items:center; justify-content:center;">
-      <div style="font-size:0.85rem; color:rgba(28,26,23,0.5); letter-spacing:0.08em;">後日追加予定</div>
+    <div class="section-title">刀装レシピ</div>
+    <div class="shinansho-note">※ 資材は〈木炭／玉鋼／冷却材／砥石〉の形式で記載</div>
+    <div class="card">${recipeRows}</div>
+
+    <div class="section-title" style="margin-top:26px;">乱舞Lv 必要数</div>
+    <div class="card" style="padding:12px;">
+      <div class="ranbu-scroll">
+        <table class="ranbu-table">${ranbuHead}${ranbuBody}</table>
+      </div>
     </div>
   `;
 }
