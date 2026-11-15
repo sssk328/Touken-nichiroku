@@ -349,15 +349,15 @@ textarea{resize:vertical; min-height:70px;}
   flex:1; background:var(--white); border-radius:12px; box-shadow:var(--shadow);
   padding:8px 4px; text-align:center; min-width:0;
 }
-.event-mode-select{ display:flex; gap:8px; margin-top:4px; }
+.event-mode-select{ display:flex; gap:6px; margin-top:4px; }
 .event-mode-btn{
-  flex:1; padding:7px 4px; border-radius:16px;
+  flex:1 1 0; min-width:0; padding:7px 2px; border-radius:16px;
   border:1px solid var(--gold); background:var(--white); color:var(--kon);
-  font-size:0.76rem; letter-spacing:0.03em; text-align:center;
+  font-size:clamp(0.6rem, 3.1vw, 0.76rem); letter-spacing:0; text-align:center;
+  white-space:nowrap;
 }
 .event-mode-btn.on{ background:var(--ai); color:var(--white); border-color:var(--ai); }
 .event-mode-select.second{ margin-top:8px; }
-.event-mode-select .event-mode-btn{ white-space:nowrap; padding-left:2px; padding-right:2px; }
 
 .dhead{
   display:flex; justify-content:space-between; align-items:baseline; gap:8px;
@@ -2407,6 +2407,8 @@ function eventMiniLabels(mode){
   if(mode==="tokumei") return {cur:"現在周回数", target:"目標周回数"};
   if(mode==="kp") return {cur:"顕現pt", target:"確保数"};
   if(mode==="osaka") return {cur:"獲得小判数", target:"目標小判数"};
+  if(mode==="senryoku") return {cur:"現回数", target:"目標回数"};
+  if(mode==="edo") return {cur:"獲得鍵数", target:"目標鍵数"};
   return {cur:"獲得pt", target:"目標pt"};
 }
 
@@ -2484,13 +2486,15 @@ function renderEventNew(main){
           <label>モード</label>
           <div class="event-mode-select">
             <button type="button" class="event-mode-btn on" data-mode="normal">通常</button>
-            <button type="button" class="event-mode-btn" data-mode="kp">鍛刀CP</button>
-            <button type="button" class="event-mode-btn" data-mode="tokumei">特命調査</button>
+            <button type="button" class="event-mode-btn" data-mode="osaka">大阪城</button>
+            <button type="button" class="event-mode-btn" data-mode="hihou">秘宝の里</button>
+            <button type="button" class="event-mode-btn" data-mode="edo">江戸城</button>
           </div>
           <div class="event-mode-select second">
-            <button type="button" class="event-mode-btn" data-mode="osaka">大阪城</button>
-            <button type="button" class="event-mode-btn" data-mode="senjutsu">戦術強化訓練</button>
-            <button type="button" class="event-mode-btn" data-mode="hihou">秘宝の里</button>
+            <button type="button" class="event-mode-btn" data-mode="kp">鍛刀</button>
+            <button type="button" class="event-mode-btn" data-mode="senryoku">戦力拡充</button>
+            <button type="button" class="event-mode-btn" data-mode="senjutsu">戦術強化</button>
+            <button type="button" class="event-mode-btn" data-mode="tokumei">特命調査</button>
           </div>
         </div>
       </div>
@@ -2516,6 +2520,7 @@ function renderEventNew(main){
       osakaShirayama:0, osakaOnimaru:0,
       senMaiSho:0, senMaiChu:0, senMaiJo:0,
       hihouFue:0, hihouKoto:0, hihouShamisen:0, hihouTaiko:0, hihouSuzu:0,
+      senryokuEi:0, senryokuFu:0, senryokuNan:0, senryokuCho:0, edoReset:0,
       archived:false, archivedAt:0
     };
     DATA.events.push(e);
@@ -2542,6 +2547,11 @@ function eventExtraCardsHtml(e, mode){
   }
   if(mode==="senjutsu"){
     return eventRowsCard("枚数", [["初級", e.senMaiSho], ["中級", e.senMaiChu], ["上級", e.senMaiJo]])
+         + (e.rewards ? eventTextCard("刀剣男士(報酬)", esc(e.rewards)) : "")
+         + (e.drops ? eventTextCard("刀剣男士(ドロップ)", esc(e.drops)) : "");
+  }
+  if(mode==="senryoku"){
+    return eventRowsCard("最終周回数", [["易", e.senryokuEi], ["普", e.senryokuFu], ["難", e.senryokuNan], ["超難", e.senryokuCho]])
          + (e.rewards ? eventTextCard("刀剣男士(報酬)", esc(e.rewards)) : "")
          + (e.drops ? eventTextCard("刀剣男士(ドロップ)", esc(e.drops)) : "");
   }
@@ -2576,9 +2586,12 @@ function renderEventView(main, id){
     fieldsHtml += `<div class="field-row"><span class="field-label">${labels.cur}</span><span class="field-val">${formatNum(e.lastPt||0)}</span></div>`;
     fieldsHtml += `<div class="field-row"><span class="field-label">${labels.target}</span><span class="field-val">${formatNum(e.targetPt||0)}</span></div>`;
     fieldsHtml += `<div class="field-row"><span class="field-label">残り日数</span><span class="field-val">${esc(daysLeftLabel(e.endDate))}</span></div>`;
-    if(mode!=="tokumei" && mode!=="osaka"){
+    if(mode!=="tokumei" && mode!=="osaka" && mode!=="senryoku"){
       const goldLabel = (mode==="senjutsu" || mode==="hihou") ? "使用小判数" : "消費小判数";
       fieldsHtml += `<div class="field-row"><span class="field-label">${goldLabel}</span><span class="field-val">${formatNum(e.goldUsed||0)}</span></div>`;
+    }
+    if(mode==="edo"){
+      fieldsHtml += `<div class="field-row"><span class="field-label">宝箱初期化回数</span><span class="field-val">${formatNum(e.edoReset||0)}</span></div>`;
     }
     fieldsHtml += `<div class="field-row"><span class="field-label">状態</span><span class="field-val">${e.archived?"戦績（アーカイブ済）":"開催中"}</span></div>`;
   }
@@ -2624,11 +2637,24 @@ function renderEventEdit(main, id){
         <div><label>白山吉光</label><input type="number" id="ed_osakaShirayama" value="${escAttr(e.osakaShirayama)}"></div>
         <div><label>鬼丸国綱</label><input type="number" id="ed_osakaOnimaru" value="${escAttr(e.osakaOnimaru)}"></div>`;
   }else{
-    if(mode!=="tokumei"){
+    if(mode!=="tokumei" && mode!=="senryoku"){
       const goldLabel = (mode==="senjutsu" || mode==="hihou") ? "使用小判数" : "消費小判数";
       fieldsHtml += `<div><label>${goldLabel}</label><input type="number" id="ed_goldUsed" value="${escAttr(e.goldUsed)}"></div>`;
     }
-    if(mode==="senjutsu"){
+    if(mode==="edo"){
+      const cur = Math.min(4, Math.max(0, Number(e.edoReset)||0));
+      fieldsHtml += `<div><label>宝箱初期化回数</label><select id="ed_edoReset">${[0,1,2,3,4].map(n=>`<option value="${n}"${n===cur?" selected":""}>${n}</option>`).join("")}</select></div>
+        <div><label>刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+    }else if(mode==="senryoku"){
+      fieldsHtml += `
+        <div><label>最終周回数(易)</label><input type="number" id="ed_senryokuEi" value="${escAttr(e.senryokuEi||0)}"></div>
+        <div><label>最終周回数(普)</label><input type="number" id="ed_senryokuFu" value="${escAttr(e.senryokuFu||0)}"></div>
+        <div><label>最終周回数(難)</label><input type="number" id="ed_senryokuNan" value="${escAttr(e.senryokuNan||0)}"></div>
+        <div><label>最終周回数(超難)</label><input type="number" id="ed_senryokuCho" value="${escAttr(e.senryokuCho||0)}"></div>
+        <div><label>刀剣男士(報酬)</label><textarea id="ed_rewards">${esc(e.rewards)}</textarea></div>
+        <div><label>刀剣男士(ドロップ)</label><textarea id="ed_drops">${esc(e.drops)}</textarea></div>`;
+    }else if(mode==="senjutsu"){
       fieldsHtml += `
         <div><label>枚数(初級)</label><input type="number" id="ed_senMaiSho" value="${escAttr(e.senMaiSho||0)}"></div>
         <div><label>枚数(中級)</label><input type="number" id="ed_senMaiChu" value="${escAttr(e.senMaiChu||0)}"></div>
@@ -2682,8 +2708,17 @@ function renderEventEdit(main, id){
       e.osakaShirayama=Number($("#ed_osakaShirayama").value)||0;
       e.osakaOnimaru=Number($("#ed_osakaOnimaru").value)||0;
     }else{
-      if(mode!=="tokumei"){ e.goldUsed=Number($("#ed_goldUsed").value)||0; }
-      if(mode==="senjutsu"){
+      if(mode!=="tokumei" && mode!=="senryoku"){ e.goldUsed=Number($("#ed_goldUsed").value)||0; }
+      if(mode==="edo"){
+        e.edoReset=Number($("#ed_edoReset").value)||0;
+        e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+      }else if(mode==="senryoku"){
+        e.senryokuEi=Number($("#ed_senryokuEi").value)||0;
+        e.senryokuFu=Number($("#ed_senryokuFu").value)||0;
+        e.senryokuNan=Number($("#ed_senryokuNan").value)||0;
+        e.senryokuCho=Number($("#ed_senryokuCho").value)||0;
+        e.rewards=$("#ed_rewards").value; e.drops=$("#ed_drops").value;
+      }else if(mode==="senjutsu"){
         e.senMaiSho=Number($("#ed_senMaiSho").value)||0;
         e.senMaiChu=Number($("#ed_senMaiChu").value)||0;
         e.senMaiJo=Number($("#ed_senMaiJo").value)||0;
