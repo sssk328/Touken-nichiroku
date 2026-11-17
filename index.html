@@ -2860,6 +2860,9 @@ function ensureDiaryFilterDefaults(){
   diaryFilterMonth = base.getMonth();
 }
 
+/* 円印/角印 切り替えアイコン */
+const SEAL_SWAP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3 2.5 7.5 7 12V9h9V6H7V3zm10 9v3H8v3h9v3l4.5-4.5L17 12z"/></svg>`;
+
 function renderDiaryList(main){
   ensureDiaryFilterDefaults();
   const years = diaryYearOptions();
@@ -2877,7 +2880,10 @@ function renderDiaryList(main){
     `<option value="${i}" ${i===diaryFilterMonth?"selected":""}>${esc(m)}</option>`
   ).join("");
 
-  let html = `<div class="section-title">日誌</div>`;
+  let html = `<div class="toushi-title-row">
+      <div class="section-title">日誌</div>
+      <button type="button" class="toushi-sort-btn" id="sealSwapBtn" aria-label="印の切り替え（現在：${sealStyleNow()==="kaku"?"角印":"円印"}）">${SEAL_SWAP_ICON}</button>
+    </div>`;
   html += `<button class="btn block fab-add" id="newDiaryBtn" style="margin-bottom:10px;">＋ 新規作成</button>`;
   html += `<div class="diary-filter-row">
       <div class="diary-filter-item"><select id="diaryYearSelect" class="diary-filter-select">${yearOptionsHtml}</select></div>
@@ -2905,6 +2911,11 @@ function renderDiaryList(main){
     });
   });
   $("#newDiaryBtn").addEventListener("click", ()=>{ navigate("diary/new"); });
+  $("#sealSwapBtn").addEventListener("click", ()=>{
+    DATA.sealStyle = sealStyleNow()==="kaku" ? "en" : "kaku";
+    saveData();
+    renderDiaryList(main);
+  });
   $("#diaryYearSelect").addEventListener("change", (e)=>{
     diaryFilterYear = Number(e.target.value);
     renderDiaryList(main);
@@ -2978,6 +2989,13 @@ const SEAL_MODE = "image";
 /* ---------- 方式 "image"：印鑑画像（GitHub上のフォルダに置いたPNG） ---------- */
 /* 画像を入れるフォルダ名（このHTMLと同じ場所に作る）。中身は「刀剣男士名.png」にそろえる */
 const SEAL_DIR = "男士名_印鑑";
+/* 角印（武将の印章風）の画像フォルダ名（こちらもこのHTMLと同じ場所に作る）。中身は円印と同じく「刀剣男士名.png」 */
+const SEAL_DIR_KAKU = "男士名_角印";
+
+/* 使う印の種類：円印("en"・既定) / 角印("kaku")。日誌見出し右端のボタンで切り替え、端末に保存される */
+function sealStyleNow(){
+  return (DATA && DATA.sealStyle === "kaku") ? "kaku" : "en";
+}
 
 /* 刀剣男士名の照合用：空白を除き、文字の表現ゆれ(濁点など)をそろえる */
 function sealNormKey(name){
@@ -2988,7 +3006,8 @@ function sealNormKey(name){
 function sealHtmlImage(kinjiName){
   const key = sealNormKey(kinjiName);
   if(!key) return "";
-  const src = SEAL_DIR + "/" + encodeURIComponent(key) + ".png";
+  const dir = sealStyleNow() === "kaku" ? SEAL_DIR_KAKU : SEAL_DIR;
+  const src = dir + "/" + encodeURIComponent(key) + ".png";
   return `<div class="diary-stamp" title="近侍: ${escAttr(kinjiName)}">
     <div class="seal"><img class="seal-img" src="${src}" alt="" loading="lazy" decoding="async" draggable="false"
       onerror="this.closest('.diary-stamp').classList.add('seal-missing')"></div>
